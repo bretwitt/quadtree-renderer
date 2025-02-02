@@ -1,4 +1,0 @@
-/home/bret/Desktop/QuadTreeRenderer/build/CMakeFiles/HeightfieldRenderer.dir
-/home/bret/Desktop/QuadTreeRenderer/build/CMakeFiles/glad.dir
-/home/bret/Desktop/QuadTreeRenderer/build/CMakeFiles/edit_cache.dir
-/home/bret/Desktop/QuadTreeRenderer/build/CMakeFiles/rebuild_cache.dir
