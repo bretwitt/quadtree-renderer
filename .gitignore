@@ -1,13 +1,3 @@
-CMakeLists.txt.user
-CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
-Makefile
-cmake_install.cmake
-install_manifest.txt
-compile_commands.json
-CTestTestfile.cmake
-_deps
-CMakeUserPresets.json
-build/*
+version https://git-lfs.github.com/spec/v1
+oid sha256:f95f649f7e23f637de125fbd0e7bb26e60aed06abe5108657a23ed9513d7183b
+size 377
