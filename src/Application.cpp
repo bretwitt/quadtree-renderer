@@ -105,7 +105,7 @@ bool Application::init()
 
     renderer = new QuadtreeRenderer();
 
-    qt.upscale(6);
+    qt.setScale(5);
 
     return true;
 }
@@ -124,7 +124,7 @@ void Application::run()
         int metric = fmax(fmin(5*(100./dist),5.0),1.0);
 
         std::cout << "--- View Level: " <<  metric << std::endl;
-        qt.setScale(metric,1.0);
+        qt.setScale(metric);
 
         // Input
         processInput();
