@@ -120,27 +120,30 @@ void Application::run()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
         
-        float dist = glm::distance(glm::vec2(qt.getBoundary().x, qt.getBoundary().y), glm::vec2(camera.Position.x, camera.Position.z));
-        int metric = fmax(fmin(5*(100./dist),5.0),1.0);
+        // float dist = glm::distance(glm::vec2(qt.getBoundary().x, qt.getBoundary().y), glm::vec2(camera.Position.x, camera.Position.z));
+        // int metric = fmax(fmin(5*(100./dist),5.0),1.0);
 
-        std::cout << "--- View Level: " <<  metric << std::endl;
-        qt.setScale(metric);
+        // std::cout << "--- View Level: " <<  metric << std::endl;
+        // qt.setScale(metric);
+        
+        int subdivisions = 0.0;
+        qt.updateLOD(camera.Position.x,camera.Position.y,camera.Position.z,120.0f, 120.0f, subdivisions);
 
-        // Input
+        if(subdivisions != 0) {
+            std::cout << "--- Subdivisions " << subdivisions << std::endl;
+
+        }
+
         processInput();
 
-        // Render
         glClearColor(0.2f,0.3f,0.3f,1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Activate shader
         shader->use();
 
         renderer->update(&qt);
 
-        // Set transformation matrices
         glm::mat4 model = glm::mat4(1.0f);
-        // Optional: Apply any model transformations here
         shader->setMat4("model", model);
 
         glm::mat4 view = camera.GetViewMatrix();
@@ -154,11 +157,8 @@ void Application::run()
         );
         shader->setMat4("projection", projection);
 
-        // Draw Heightfield
-        // heightfield->Draw();
         renderer->draw();
 
-        // Swap buffers and poll IO events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }

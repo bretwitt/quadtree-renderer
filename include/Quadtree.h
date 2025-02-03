@@ -2,6 +2,7 @@
 #define QUADTREE_H
 
 #include <iostream>
+#include <cmath>  // For std::sqrt
 
 using namespace std;
 
@@ -15,11 +16,14 @@ public:
     //   x, y: Center of the node's boundary.
     //   width, height: Half-dimensions of the boundary.
     //   capacity: Maximum number of subdivisions before stopping.
-    QuadTree(float x, float y, float width, float height, int capacity = 1, T type = T{})
+    //   type: The data type to store.
+    //   level: The current level of this node (0 for root).
+    QuadTree(float x, float y, float width, float height, int capacity = 1, T type = T{}, int level = 0)
         : boundary{ x, y, width, height },
           capacity(capacity),
           type(type),
           divided(false),
+          level(level),
           northeast(nullptr),
           northwest(nullptr),
           southeast(nullptr),
@@ -35,7 +39,7 @@ public:
 
     // A simple structure representing the rectangular boundary.
     struct QuadBoundary {
-        float x, y;  // Center of the rectangle.
+        float x, y;   // Center of the rectangle.
         float width;  // Half-width.
         float height; // Half-height.
     };
@@ -54,6 +58,7 @@ public:
     T getType() const { return type; }
     void setType(T newType) { type = newType; }
 
+    // Sets the scale (or depth) of the quadtree uniformly.
     void setScale(int targetDepth) {
         adjustScale(targetDepth, 0);
     }
@@ -73,6 +78,7 @@ public:
     }
 
     // Subdivides the current node into four child quadrants.
+    // Each child gets level = parent level + 1.
     void subdivide() {
         if (divided) return;
         
@@ -81,10 +87,11 @@ public:
         float w = boundary.width / 2.0f;
         float h = boundary.height / 2.0f;
 
-        northeast = new QuadTree(x + w, y - h, w, h, capacity, type);
-        northwest = new QuadTree(x - w, y - h, w, h, capacity, type);
-        southeast = new QuadTree(x + w, y + h, w, h, capacity, type);
-        southwest = new QuadTree(x - w, y + h, w, h, capacity, type);
+        // Create children with inherited type and increased level.
+        northeast = new QuadTree(x + w, y - h, w, h, capacity, type, level + 1);
+        northwest = new QuadTree(x - w, y - h, w, h, capacity, type, level + 1);
+        southeast = new QuadTree(x + w, y + h, w, h, capacity, type, level + 1);
+        southwest = new QuadTree(x - w, y + h, w, h, capacity, type, level + 1);
         
         divided = true;
     }
@@ -102,16 +109,42 @@ public:
         divided = false;
     }
 
+    void updateLOD(float cameraX, float cameraY, float cameraZ, float splitThreshold, float mergeThreshold, int& subdivisions) {
+        float dx = boundary.x - cameraX;
+        float dy = boundary.y - cameraY;
+        float dz = 0 - cameraZ;
+        float distance = std::sqrt(dx * dx + dy * dy);
+
+        float effectiveSplitThreshold = splitThreshold / (level + 1);
+        float effectiveMergeThreshold = mergeThreshold / (level + 1);
+
+        if (distance < effectiveSplitThreshold && level < 5.0f) {
+            if (!divided) {
+                subdivide();
+                subdivisions++;
+            }
+            if (divided) {
+                northeast->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
+                northwest->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
+                southeast->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
+                southwest->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
+            }
+        }
+        else if (distance > effectiveMergeThreshold) {
+            if (divided) {
+                merge();
+            }
+        }
+    }
+
+    int getLevel() const { return level; }
+
 private:
-    // The boundary of this node.
     QuadBoundary boundary;
-    // Maximum number of subdivisions before stopping.
     int capacity;
-    // The type stored in this bucket.
     T type;
-    // Flag to indicate whether this node has been subdivided.
     bool divided;
-    // Pointers to the four child nodes.
+    int level;
     QuadTree* northeast;
     QuadTree* northwest;
     QuadTree* southeast;
