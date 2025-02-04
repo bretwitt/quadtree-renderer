@@ -13,6 +13,7 @@
 #include "QuadtreeTile.h"
 
 #include "QuadtreeRenderer.h"
+#include "BucketMeshRenderer.h"
 
 class Application
 {
@@ -38,6 +39,7 @@ private:
     Heightfield* heightfield;
     QuadtreeTile<int> qt;
     QuadtreeRenderer* renderer;
+    BucketMeshRenderer* bucket_renderer;
 
     // Camera
     Camera camera;

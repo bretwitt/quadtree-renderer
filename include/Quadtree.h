@@ -16,6 +16,7 @@ public:
     using BucketCallback = std::function<void(QuadTree<T>*)>;
 
     BucketCallback bucketInitializedCallback;
+    BucketCallback bucketUnloadCallback;
     
     // Constructs a quadtree node.
     // Parameters:
@@ -23,12 +24,15 @@ public:
     //   width, height: Half-dimensions of the boundary.
     //   type: The data type to store.
     //   level: The current level of this node (0 for root).
-    QuadTree(float x, float y, float width, float height, T type = T{}, int level = 0, BucketCallback bucketInit = nullptr)
+    QuadTree(float x, float y, float width, float height, T type = T{}, int level = 0, 
+    BucketCallback bucketInit = nullptr,BucketCallback bucketUnload = nullptr
+    )
         : boundary{ x, y, width, height },
           type(type),
           divided(false),
           level(level),
-          bucketInitializedCallback(bucketInit)
+          bucketInitializedCallback(bucketInit),
+          bucketUnloadCallback(bucketUnload)
     {
         if (bucketInitializedCallback) {
             bucketInitializedCallback(this);
@@ -44,6 +48,9 @@ public:
 
     // Destructor: recursively deletes any child nodes.
     ~QuadTree() {
+        if(bucketUnloadCallback) {
+            bucketUnloadCallback(this);
+        }
         delete northeast;
         delete northwest;
         delete southeast;
@@ -109,12 +116,16 @@ public:
         // cout << "lvl " << level << endl;
         int childLevel = level + 1;
         // Create children with inherited type and increased level.
-        northeast = new QuadTree(x + w, y - h, w, h, type, childLevel, bucketInitializedCallback);
-        northwest = new QuadTree(x - w, y - h, w, h, type, childLevel, bucketInitializedCallback);
-        southeast = new QuadTree(x + w, y + h, w, h, type, childLevel, bucketInitializedCallback);
-        southwest = new QuadTree(x - w, y + h, w, h, type, childLevel, bucketInitializedCallback);
+        northeast = new QuadTree(x + w, y - h, w, h, type, childLevel, bucketInitializedCallback, bucketUnloadCallback);
+        northwest = new QuadTree(x - w, y - h, w, h, type, childLevel, bucketInitializedCallback, bucketUnloadCallback);
+        southeast = new QuadTree(x + w, y + h, w, h, type, childLevel, bucketInitializedCallback, bucketUnloadCallback);
+        southwest = new QuadTree(x - w, y + h, w, h, type, childLevel, bucketInitializedCallback, bucketUnloadCallback);
         
         divided = true;
+
+        if(bucketUnloadCallback) {
+            bucketUnloadCallback(this);
+        }
     }
     
     // Merges child nodes back into the parent.
@@ -136,6 +147,10 @@ public:
         
         northeast = northwest = southeast = southwest = nullptr;
         divided = false;
+
+        if(bucketInitializedCallback) {
+            bucketInitializedCallback(this);
+        }
     }
 
     int getLevel() const { return level; }

@@ -14,11 +14,14 @@ QuadtreeRenderer::~QuadtreeRenderer()
     glDeleteVertexArrays(1, &VAO);
 }
 
-void QuadtreeRenderer::update(const QuadTree<int>* root)
+void QuadtreeRenderer::update(const QuadTree<int>* root, GLuint shaderProgram)
 {
     vertices.clear();
     if (root)
         collectQuads(root);
+
+    GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
+    glUniform3f(colorLoc,0,0,1);
 
     // Bind and update buffer data.
     glBindVertexArray(VAO);
@@ -35,7 +38,7 @@ void QuadtreeRenderer::update(const QuadTree<int>* root)
 }
 
 void QuadtreeRenderer::draw() const
-{
+{        
     glBindVertexArray(VAO);
     // Each rectangle is drawn as 4 independent line segments.
     // Since we push 8 vertices (2 per edge) per rectangle, the total number of vertices is vertices.size()/3.

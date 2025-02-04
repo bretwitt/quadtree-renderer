@@ -21,7 +21,7 @@ public:
     // Update the vertex buffer with the current quadtree boundaries.
     // This method traverses the quadtree (using the public accessor methods)
     // and collects vertices for drawing each node’s boundary as 4 line segments.
-    void update(const QuadTree<int>* root);
+    void update(const QuadTree<int>* root,GLuint shaderProgram);
 
     // Render the quadtree boundaries. Use an appropriate shader before calling this.
     void draw() const;

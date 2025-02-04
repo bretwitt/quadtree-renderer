@@ -3,8 +3,14 @@
 
 #include "Quadtree.h"
 #include <cmath>  // For std::sqrt
+#include <unordered_map>
 
-// The QuadtreeTile class wraps a QuadTree instance and provides an updateLOD method.
+
+struct Mesh {
+    std::vector<float> vertices;
+    std::vector<int> indices;
+};
+
 template<typename T>
 class QuadtreeTile {
 public:
@@ -17,7 +23,12 @@ public:
     QuadtreeTile(float x, float y, float width, float height)
     {
         tree = new QuadTree<int>(x, y, width, height);
-        tree->bucketInitializedCallback = onNewBucket;
+        tree->bucketInitializedCallback = [this](QuadTree<int>* node) {
+            this->onNewBucket(node);
+        };
+        tree->bucketUnloadCallback = [this](QuadTree<int>* node) {
+            this->onUnloadBucket(node);
+        };
     }
 
     // Destructor: cleans up the allocated QuadTree.
@@ -36,6 +47,12 @@ public:
 
     QuadTree<T>* getTree() const { return tree; }
 
+    std::unordered_map<QuadTree<int>*, Mesh> getMeshes() {
+        return bucketMeshes;
+    }
+
+
+
 private:
     void updateLODRec(QuadTree<T>* node,
                       float cameraX, float cameraY, float cameraZ,
@@ -44,17 +61,38 @@ private:
     {
         // Retrieve the node's boundary.
         typename QuadTree<T>::QuadBoundary boundary = node->getBoundary();
+
+        float left   = boundary.x - boundary.width;
+        float right  = boundary.x + boundary.width;
+        float top    = boundary.y - boundary.height;
+        float bottom = boundary.y + boundary.height;
+
+        // Compute dx: horizontal distance from the camera to the boundary.
+        float dx = 0.0f;
+        if (cameraX < left)
+            dx = left - cameraX;
+        else if (cameraX > right)
+            dx = cameraX - right;
+        // Otherwise, cameraX is within [left, right] and dx remains 0.
+
+        // Compute dy: vertical distance from the camera to the boundary.
+        float dy = 0.0f;
+        if (cameraY < top)
+            dy = top - cameraY;
+        else if (cameraY > bottom)
+            dy = cameraY - bottom;
+        // float dx = boundary.x - cameraX;
+        // float dy = boundary.y - cameraY;
         
-        float dx = boundary.x - cameraX;
-        float dy = boundary.y - cameraY;
         float dz = 0.0f - cameraZ;
+
         float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
 
         int level = node->getLevel();
         float effectiveSplitThreshold = splitThreshold / (level + 1);
         float effectiveMergeThreshold = mergeThreshold / (level + 1);
 
-        if (distance < effectiveSplitThreshold && level < 5) {  
+        if (distance < effectiveSplitThreshold && level < 4) {  
             if (!node->isDivided()) {
                 node->subdivide();
                 subdivisions++; 
@@ -73,13 +111,70 @@ private:
         }
     }
 
-    static void onNewBucket(QuadTree<int>* node) {
+    void onNewBucket(QuadTree<int>* node) {
         cout << "New bucket created at level " << node->getLevel() << endl;
+        int level = node->getLevel();
+        typename QuadTree<int>::QuadBoundary bounds = node->getBoundary();
+
+        Mesh mesh = generateTriangularMesh(bounds.x, bounds.y, bounds.width, bounds.height, level);
+        cout << "Mesh has " << mesh.vertices.size()/2 << " vertices and " << mesh.indices.size()/3 << " triangles." << endl;
+        bucketMeshes[node] = mesh;
+    }
+
+    void onUnloadBucket(QuadTree<int>* node) {
+        cout << "Bucket unloaded at level " << node->getLevel() << std::endl;
+        auto it = bucketMeshes.find(node);
+        if (it != bucketMeshes.end()) {
+            bucketMeshes.erase(it);
+            std::cout << "Mesh for bucket at level " << node->getLevel() << " removed." << std::endl;
+        }
+    }
+
+    Mesh generateTriangularMesh(float centerX, float centerY, float halfWidth, float halfHeight, int level) {
+        Mesh mesh;
+
+        int divisions = 1 << (level + 1); // This computes 2^(level + 1).
+        int numVerticesPerSide = divisions + 1;
+
+        float stepX = (2.0f * halfWidth) / divisions;
+        float stepY = (2.0f * halfHeight) / divisions;
+
+        float startX = centerX - halfWidth;
+        float startY = centerY - halfHeight;
+
+        for (int j = 0; j < numVerticesPerSide; ++j) {
+            for (int i = 0; i < numVerticesPerSide; ++i) {
+                float x = startX + i * stepX;
+                float y = startY + j * stepY;
+                mesh.vertices.push_back(x);
+                mesh.vertices.push_back(y);
+                mesh.vertices.push_back(0.0);
+            }
+        }
+
+        for (int j = 0; j < divisions; ++j) {
+            for (int i = 0; i < divisions; ++i) {
+                int topLeft = j * numVerticesPerSide + i;
+                int topRight = topLeft + 1;
+                int bottomLeft = (j + 1) * numVerticesPerSide + i;
+                int bottomRight = bottomLeft + 1;
+
+                mesh.indices.push_back(topLeft);
+                mesh.indices.push_back(bottomLeft);
+                mesh.indices.push_back(topRight);
+
+                mesh.indices.push_back(topRight);
+                mesh.indices.push_back(bottomLeft);
+                mesh.indices.push_back(bottomRight);
+            }
+        }
+
+        return mesh;
     }
 
     // Pointer to the underlying QuadTree.
     QuadTree<T>* tree;
-    
+    std::unordered_map<QuadTree<int>*, Mesh> bucketMeshes;
 };
 
 #endif // QUADTREE_TILE_H

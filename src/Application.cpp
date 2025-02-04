@@ -16,7 +16,8 @@ Application::Application(int width, int height, const char* title)
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
       qt(QuadtreeTile<int>(0.0f,0.0f,100.0f,100.0f)),
-      renderer(nullptr)
+      renderer(nullptr),
+      bucket_renderer(nullptr)
 {
 
     if(!init())
@@ -32,6 +33,7 @@ Application::~Application()
     delete shader;
     delete heightfield;
     delete renderer;
+    delete bucket_renderer;
     glfwTerminate();
 }
 
@@ -103,6 +105,7 @@ bool Application::init()
 
     // std::cout << qt.getBoundary().width << std::endl;
     renderer = new QuadtreeRenderer();
+    bucket_renderer = new BucketMeshRenderer();
 
     qt.getTree()->setScale(2);
     // qt.getTree()->getLevel();
@@ -141,7 +144,8 @@ void Application::run()
 
         shader->use();
 
-        renderer->update(qt.getTree());
+        renderer->update(qt.getTree(), shader->ID);
+        bucket_renderer->render(qt.getMeshes(), shader->ID);
 
         glm::mat4 model = glm::mat4(1.0f);
         shader->setMat4("model", model);
