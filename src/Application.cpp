@@ -144,7 +144,7 @@ void Application::run()
 
         shader->use();
 
-        renderer->update(qt.getTree(), shader->ID);
+        // renderer->update(qt.getTree(), shader->ID);
         bucket_renderer->render(qt.getMeshes(), shader->ID);
 
         glm::mat4 model = glm::mat4(1.0f);
@@ -259,15 +259,15 @@ void Application::setCallbacks()
     );
 
     // Set the mouse callback
-    // glfwSetCursorPosCallback(window, 
-    //     [](GLFWwindow* window, double xpos, double ypos) 
-    //     {
-    //         // Retrieve the Application instance
-    //         Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
-    //         if(app)
-    //             app->mouse_callback(xpos, ypos);
-    //     }
-    // );
+    glfwSetCursorPosCallback(window, 
+        [](GLFWwindow* window, double xpos, double ypos) 
+        {
+            // Retrieve the Application instance
+            Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+            if(app)
+                app->mouse_callback(xpos, ypos);
+        }
+    );
 
     // Set the scroll callback
     glfwSetScrollCallback(window, 
