@@ -11,6 +11,7 @@
 #include "Heightfield.h"
 #include "Camera.h"
 #include "QuadtreeTile.h"
+#include "QuadtreeWorld.h"
 
 #include "QuadtreeRenderer.h"
 #include "BucketMeshRenderer.h"
@@ -37,7 +38,8 @@ private:
     // Shader and Heightfield
     Shader* shader;
     Heightfield* heightfield;
-    QuadtreeTile<int> qt;
+    // QuadtreeTile<int> qt;
+    QuadtreeWorld qt_world;
     QuadtreeRenderer* renderer;
     BucketMeshRenderer* bucket_renderer;
 

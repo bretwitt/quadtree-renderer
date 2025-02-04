@@ -159,6 +159,14 @@ public:
     QuadTree* getSoutheastNonConst() { return southeast; }
     QuadTree* getSouthwestNonConst() { return southwest; }
 
+    int getNumChildren() const {
+        if (!divided)
+            return 0;
+        return 4 + northeast->getNumChildren() +
+                   northwest->getNumChildren() +
+                   southeast->getNumChildren() +
+                   southwest->getNumChildren();
+    }
 private:
     QuadBoundary boundary;
     T type;

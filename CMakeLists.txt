@@ -5,6 +5,7 @@ project(HeightfieldRenderer)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
 # Specify the sources
 set(SOURCES
     src/main.cpp
@@ -19,9 +20,23 @@ set(SOURCES
 include_directories(
     include
 )
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends)
+
+file(GLOB IMGUI_SOURCES 
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_glfw.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_glfw.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3_loader.cpp
+)
+
+add_library("ImGui" STATIC ${IMGUI_SOURCES})
 
 # Add executable
 add_executable(${PROJECT_NAME} ${SOURCES})
+
 
 # Find OpenGL
 find_package(OpenGL REQUIRED)
@@ -52,7 +67,7 @@ endif()
 # Add GLAD
 add_library(glad src/glad.c)  # Adjust the path if necessary
 target_include_directories(glad PUBLIC include)  # Adjust include path if necessary
-target_link_libraries(${PROJECT_NAME} glad)
+target_link_libraries(${PROJECT_NAME} glad ImGui)
 
 # Link other necessary libraries
 if(UNIX)

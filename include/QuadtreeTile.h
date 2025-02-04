@@ -123,6 +123,17 @@ public:
         return bucketMeshes;
     }
 
+    size_t getMemoryUsage() const {
+        size_t totalMemory = 0.0;
+        for (const auto& bucketMesh : bucketMeshes) {
+            const Mesh& mesh = bucketMesh.second;
+            // Estimate the memory used by the vertices and indices.
+            totalMemory += mesh.vertices.capacity() * sizeof(float);
+            totalMemory += mesh.indices.capacity() * sizeof(int);
+        }
+        return totalMemory;
+    }
+
 private:
     // Recursive function to update level-of-detail.
     void updateLODRec(QuadTree<T>* node,

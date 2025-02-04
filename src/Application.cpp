@@ -2,6 +2,11 @@
 #include "Application.h"
 #include <iostream>
 
+// Include ImGui headers
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 // Heightfield parameters
 const int DEFAULT_GRID_SIZE = 100;
 const float DEFAULT_GRID_SCALE = 1.5f;
@@ -15,11 +20,10 @@ Application::Application(int width, int height, const char* title)
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
-      qt(QuadtreeTile<int>(0.0f,0.0f,100.0f,100.0f)),
+      qt_world(100,4, 120.0f,120.0f),
       renderer(nullptr),
       bucket_renderer(nullptr)
 {
-
     if(!init())
     {
         std::cerr << "Failed to initialize Application\n";
@@ -29,7 +33,12 @@ Application::Application(int width, int height, const char* title)
 
 Application::~Application()
 {
-    // Cleanup
+    // Cleanup ImGui
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    // Cleanup application resources
     delete shader;
     delete heightfield;
     delete renderer;
@@ -39,7 +48,6 @@ Application::~Application()
 
 bool Application::init()
 {
-
     // Initialize GLFW
     if(!glfwInit())
     {
@@ -92,23 +100,38 @@ bool Application::init()
     // Initialize Shader
     shader = new Shader("../shaders/vertex_shader.glsl", "../shaders/fragment_shader.glsl");
 
-    // Initialize Heightfield
+    // Initialize Heightfield (if needed)
     // heightfield = new Heightfield(DEFAULT_GRID_SIZE, DEFAULT_GRID_SCALE, DEFAULT_HEIGHT_SCALE);
 
-    // qt = QuadtreeTile<int>(0.0f,0.0f,100.0f,100.0f);
-    // qt.insert({ -30.0f, -30.0f, 1 });
-    // qt.insert({ -35.0f, -30.0f, 1 });
-    // qt.insert({ -33.0f, -30.0f, 1 });
-    // qt.insert({  30.0f, -30.0f, 2 });
-    // qt.insert({  30.0f,  30.0f, 3 });
-    // qt.insert({ -30.0f,  30.0f, 4 });
-
-    // std::cout << qt.getBoundary().width << std::endl;
+    // Initialize renderers
     renderer = new QuadtreeRenderer();
     bucket_renderer = new BucketMeshRenderer();
 
-    qt.getTree()->setScale(2);
-    // qt.getTree()->getLevel();
+    // ---------------------------
+    // Initialize Dear ImGui
+    // ---------------------------
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    // Optionally, access ImGuiIO for configuration
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    // Setup Platform/Renderer backends
+    // Use "#version 330" for OpenGL 3.3 Core
+    const char* glsl_version = "#version 330";
+    if (!ImGui_ImplGlfw_InitForOpenGL(window, true))
+    {
+        std::cerr << "Failed to initialize ImGui GLFW backend\n";
+        return false;
+    }
+    if (!ImGui_ImplOpenGL3_Init(glsl_version))
+    {
+        std::cerr << "Failed to initialize ImGui OpenGL3 backend\n";
+        return false;
+    }
+    // ---------------------------
 
     return true;
 }
@@ -116,37 +139,96 @@ bool Application::init()
 void Application::run()
 {
     // Render loop
-    while(!glfwWindowShouldClose(window))
+    while (!glfwWindowShouldClose(window))
     {
         // Per-frame time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-        
-        // float dist = glm::distance(glm::vec2(qt.getBoundary().x, qt.getBoundary().y), glm::vec2(camera.Position.x, camera.Position.z));
-        // int metric = fmax(fmin(5*(100./dist),5.0),1.0);
 
-        // std::cout << "--- View Level: " <<  metric << std::endl;
-        // qt.setScale(metric);
-        
-        int subdivisions = 0.0;
-        qt.updateLOD(camera.Position.x,camera.Position.y,camera.Position.z,120.0f, 120.0f, subdivisions);
-
-        if(subdivisions != 0) {
-            std::cout << "--- Subdivisions " << subdivisions << std::endl;
-
-        }
+        // Update the quadtree with the current camera position (or any other needed update)
+        qt_world.update(camera.Position.x, camera.Position.y, camera.Position.z);
 
         processInput();
 
-        glClearColor(0.2f,0.3f,0.3f,1.0f);
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        // ---------------------------
+        // Extended Debug Info Window
+        // ---------------------------
+        {
+            ImGui::SetNextWindowSize(ImVec2(400, 300));
+            ImGui::Begin("Statistics");
+
+            // Basic stats
+            ImGui::Text("Frame time: %.3f ms/frame", 1000.0f / ImGui::GetIO().Framerate);
+            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+            ImGui::Text("Camera Position: (%.2f, %.2f, %.2f)",
+                        camera.Position.x, camera.Position.y, camera.Position.z);
+
+            // ----------------------------------------------------------------
+            // Tile and memory statistics (you might need to implement these)
+            // ----------------------------------------------------------------
+            // These functions are assumed to be implemented in your qt_world (or similar) class.
+            int totalTiles = qt_world.getTotalTiles();     // Total number of tiles in the quadtree
+            // int activeTiles = qt_world.getActiveTiles();     // Tiles currently active (or visible)
+            size_t memoryUsageBytes = qt_world.getMemoryUsage(); // Memory used by the tiles (in bytes)
+
+            ImGui::Text("Total Tiles: %d", totalTiles);
+            // ImGui::Text("Active Tiles: %d", activeTiles);
+            ImGui::Text("Memory Usage: %.2f MB", memoryUsageBytes / (1024.0f * 1024.0f));
+
+            // ------------------------------------------------------
+            // Graph: Memory usage history (in MB)
+            // ------------------------------------------------------
+            // Keep a rolling history for plotting (for example, last 120 frames)
+            static const int historySize = 120;
+            static float memUsageHistory[historySize] = { 0 };
+            static int memHistoryIdx = 0;
+            memUsageHistory[memHistoryIdx] = static_cast<float>(memoryUsageBytes) / (1024.0f * 1024.0f);
+            memHistoryIdx = (memHistoryIdx + 1) % historySize;
+            ImGui::PlotLines("Memory Usage (MB)", memUsageHistory, historySize, memHistoryIdx, nullptr, 0.0f, 10.0f, ImVec2(0, 80));
+
+            // ------------------------------------------------------
+            // Graph: Active tile count history
+            // ------------------------------------------------------
+            // static float activeTilesHistory[historySize] = { 0 };
+            // static int activeTilesHistoryIdx = 0;
+            // activeTilesHistory[activeTilesHistoryIdx] = static_cast<float>(activeTiles);
+            // activeTilesHistoryIdx = (activeTilesHistoryIdx + 1) % historySize;
+            // ImGui::PlotLines("Active Tiles", activeTilesHistory, historySize, activeTilesHistoryIdx, nullptr, 0.0f, static_cast<float>(totalTiles), ImVec2(0, 80));
+
+            // ------------------------------------------------------
+            // Toggle wireframe mode via ImGui checkbox (as before)
+            // ------------------------------------------------------
+            if (ImGui::Checkbox("Wireframe", &wireframe))
+            {
+                if (wireframe)
+                {
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // Enable wireframe
+                    std::cout << "Wireframe mode enabled via ImGui.\n";
+                }
+                else
+                {
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // Enable filled mode
+                    std::cout << "Wireframe mode disabled via ImGui.\n";
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---------------------------
+        // OpenGL Rendering Commands
+        // ---------------------------
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader->use();
 
-        // renderer->update(qt.getTree(), shader->ID);
-        bucket_renderer->render(qt.getMeshes(), shader->ID);
-
+        // Update matrices for shader
         glm::mat4 model = glm::mat4(1.0f);
         shader->setMat4("model", model);
 
@@ -161,7 +243,14 @@ void Application::run()
         );
         shader->setMat4("projection", projection);
 
+        // Render your scene and custom renderers
+        // renderer->update(qt_world.getTree(), shader->ID);
+        bucket_renderer->render(qt_world.getAllMeshes(), shader->ID);
         renderer->draw();
+
+        // Render the ImGui frame
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -204,11 +293,9 @@ void Application::processInput()
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // Enable filled mode
                 std::cout << "Wireframe mode disabled.\n";
             }
-
             wireframeKeyPressed = true; // Mark the key as pressed
         }
     }
-
     // Reset the key press state when the key is released
     if(glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE)
     {
