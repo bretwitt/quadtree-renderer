@@ -15,7 +15,7 @@ Application::Application(int width, int height, const char* title)
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
-      qt(0.0f,0.0f,100.0f,100.0f,4),
+      qt(QuadtreeTile<int>(0.0f,0.0f,100.0f,100.0f)),
       renderer(nullptr)
 {
 
@@ -93,7 +93,7 @@ bool Application::init()
     // Initialize Heightfield
     // heightfield = new Heightfield(DEFAULT_GRID_SIZE, DEFAULT_GRID_SCALE, DEFAULT_HEIGHT_SCALE);
 
-    qt = QuadTree<int>(0.0f,0.0f,100.0f,100.0f,4);
+    // qt = QuadtreeTile<int>(0.0f,0.0f,100.0f,100.0f);
     // qt.insert({ -30.0f, -30.0f, 1 });
     // qt.insert({ -35.0f, -30.0f, 1 });
     // qt.insert({ -33.0f, -30.0f, 1 });
@@ -102,10 +102,10 @@ bool Application::init()
     // qt.insert({ -30.0f,  30.0f, 4 });
 
     // std::cout << qt.getBoundary().width << std::endl;
-
     renderer = new QuadtreeRenderer();
 
-    qt.setScale(5);
+    qt.getTree()->setScale(2);
+    // qt.getTree()->getLevel();
 
     return true;
 }
@@ -141,7 +141,7 @@ void Application::run()
 
         shader->use();
 
-        renderer->update(&qt);
+        renderer->update(qt.getTree());
 
         glm::mat4 model = glm::mat4(1.0f);
         shader->setMat4("model", model);

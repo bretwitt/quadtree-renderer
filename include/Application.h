@@ -10,7 +10,7 @@
 #include "Shader.h"
 #include "Heightfield.h"
 #include "Camera.h"
-
+#include "QuadtreeTile.h"
 
 #include "QuadtreeRenderer.h"
 
@@ -36,7 +36,7 @@ private:
     // Shader and Heightfield
     Shader* shader;
     Heightfield* heightfield;
-    QuadTree<int> qt;
+    QuadtreeTile<int> qt;
     QuadtreeRenderer* renderer;
 
     // Camera

@@ -2,32 +2,45 @@
 #define QUADTREE_H
 
 #include <iostream>
-#include <cmath>  // For std::sqrt
+#include <cmath>         // For std::sqrt
+#include <functional>    // For std::function
 
-using namespace std;
+using std::cout;
+using std::endl;
 
 // The QuadTree class represents a hierarchical spatial subdivision.
 // Each bucket stores a specific type.
 template<typename T>
 class QuadTree {
 public:
+    using BucketCallback = std::function<void(QuadTree<T>*)>;
+
+    BucketCallback bucketInitializedCallback;
+    
     // Constructs a quadtree node.
     // Parameters:
     //   x, y: Center of the node's boundary.
     //   width, height: Half-dimensions of the boundary.
-    //   capacity: Maximum number of subdivisions before stopping.
     //   type: The data type to store.
     //   level: The current level of this node (0 for root).
-    QuadTree(float x, float y, float width, float height, int capacity = 1, T type = T{}, int level = 0)
+    QuadTree(float x, float y, float width, float height, T type = T{}, int level = 0, BucketCallback bucketInit = nullptr)
         : boundary{ x, y, width, height },
-          capacity(capacity),
           type(type),
           divided(false),
           level(level),
-          northeast(nullptr),
-          northwest(nullptr),
-          southeast(nullptr),
-          southwest(nullptr) {}
+          bucketInitializedCallback(bucketInit)
+    {
+        if (bucketInitializedCallback) {
+            bucketInitializedCallback(this);
+        }
+
+        northeast = nullptr;
+        northwest = nullptr;
+        southeast = nullptr;
+        southwest = nullptr; 
+
+        // cout << "Initialized tile @ LVL " << level << endl;
+    }
 
     // Destructor: recursively deletes any child nodes.
     ~QuadTree() {
@@ -60,20 +73,26 @@ public:
 
     // Sets the scale (or depth) of the quadtree uniformly.
     void setScale(int targetDepth) {
+        cout << "setScale" << endl;
         adjustScale(targetDepth, 0);
     }
 
     void adjustScale(int targetDepth, int currentDepth) {
+        // cout << "SET " << targetDepth << " " << currentDepth << endl;
+
         if (currentDepth < targetDepth) {
             if (!divided) {
                 subdivide();
             }
-            northeast->adjustScale(targetDepth, currentDepth + 1);
-            northwest->adjustScale(targetDepth, currentDepth + 1);
-            southeast->adjustScale(targetDepth, currentDepth + 1);
-            southwest->adjustScale(targetDepth, currentDepth + 1);
-        } else {
-            merge();
+            int nextDepth = currentDepth + 1;
+            northeast->adjustScale(targetDepth, nextDepth);
+            northwest->adjustScale(targetDepth, nextDepth);
+            southeast->adjustScale(targetDepth, nextDepth);
+            southwest->adjustScale(targetDepth, nextDepth);
+        } else if (currentDepth >= targetDepth) {
+            if (divided) {
+                merge();
+            }
         }
     }
 
@@ -87,19 +106,29 @@ public:
         float w = boundary.width / 2.0f;
         float h = boundary.height / 2.0f;
 
+        // cout << "lvl " << level << endl;
+        int childLevel = level + 1;
         // Create children with inherited type and increased level.
-        northeast = new QuadTree(x + w, y - h, w, h, capacity, type, level + 1);
-        northwest = new QuadTree(x - w, y - h, w, h, capacity, type, level + 1);
-        southeast = new QuadTree(x + w, y + h, w, h, capacity, type, level + 1);
-        southwest = new QuadTree(x - w, y + h, w, h, capacity, type, level + 1);
+        northeast = new QuadTree(x + w, y - h, w, h, type, childLevel, bucketInitializedCallback);
+        northwest = new QuadTree(x - w, y - h, w, h, type, childLevel, bucketInitializedCallback);
+        southeast = new QuadTree(x + w, y + h, w, h, type, childLevel, bucketInitializedCallback);
+        southwest = new QuadTree(x - w, y + h, w, h, type, childLevel, bucketInitializedCallback);
         
         divided = true;
     }
     
-    // Merges child nodes back into the parent if possible.
+    // Merges child nodes back into the parent.
     void merge() {
         if (!divided) return;
-        
+
+        // cout << "merge at level " << level << endl;
+        // cout << "Current node: " << this << endl;
+        // cout << "northeast: " << northeast << endl;
+        // cout << "northwest: " << northwest << endl;
+        // cout << "southeast: " << southeast << endl;
+        // cout << "southwest: " << southwest << endl;
+
+        // Delete all children
         delete northeast;
         delete northwest;
         delete southeast;
@@ -109,41 +138,16 @@ public:
         divided = false;
     }
 
-    void updateLOD(float cameraX, float cameraY, float cameraZ, float splitThreshold, float mergeThreshold, int& subdivisions) {
-        float dx = boundary.x - cameraX;
-        float dy = boundary.y - cameraY;
-        float dz = 0 - cameraZ;
-        float distance = std::sqrt(dx * dx + dy * dy);
-
-        float effectiveSplitThreshold = splitThreshold / (level + 1);
-        float effectiveMergeThreshold = mergeThreshold / (level + 1);
-
-        if (distance < effectiveSplitThreshold && level < 5.0f) {
-            if (!divided) {
-                subdivide();
-                subdivisions++;
-            }
-            if (divided) {
-                northeast->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
-                northwest->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
-                southeast->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
-                southwest->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold,subdivisions);
-            }
-        }
-        else if (distance > effectiveMergeThreshold) {
-            if (divided) {
-                merge();
-            }
-        }
-    }
-
     int getLevel() const { return level; }
+    QuadTree* getNortheastNonConst() { return northeast; }
+    QuadTree* getNorthwestNonConst() { return northwest; }
+    QuadTree* getSoutheastNonConst() { return southeast; }
+    QuadTree* getSouthwestNonConst() { return southwest; }
 
 private:
     QuadBoundary boundary;
-    int capacity;
     T type;
-    bool divided;
+    bool divided = false;
     int level;
     QuadTree* northeast;
     QuadTree* northwest;
