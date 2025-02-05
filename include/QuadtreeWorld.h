@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <iostream>
+#include "GeoTIFFLoader.h"
 
 //---------------------------------------------------------------------
 // A helper structure to uniquely identify a tile by its grid indices.
@@ -49,7 +50,10 @@ public:
         : tileSize(tileSize),
           viewRangeInTiles(viewRangeInTiles),
           splitThreshold(splitThreshold),
-          mergeThreshold(mergeThreshold) {}
+          mergeThreshold(mergeThreshold) {
+
+            loader.load("../resources/apollo.TIFF");
+          }
 
     // Destructor: Clean up all allocated tiles.
     ~QuadtreeWorld() {
@@ -83,7 +87,7 @@ public:
                     float centerPosX = tileX * tileSize + tileSize * 0.5f;
                     float centerPosY = tileY * tileSize + tileSize * 0.5f;
                     float halfSize = tileSize * 0.5f;
-                    tiles[key] = new QuadtreeTile<int>(centerPosX, centerPosY, halfSize, halfSize);
+                    tiles[key] = new QuadtreeTile<int>(centerPosX, centerPosY, halfSize, halfSize, &loader);
                     std::cout << "Tile created at grid (" << tileX << ", " << tileY << ")\n";
                 }
             }
@@ -144,6 +148,7 @@ private:
 
     // A mapping from a grid key to a pointer to a QuadtreeTile.
     std::unordered_map<TileKey, QuadtreeTile<int>*> tiles;
+    GeoTIFFLoader loader;
 };
 
 #endif // QUADTREE_WORLD_H

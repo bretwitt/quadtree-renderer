@@ -13,6 +13,7 @@ set(SOURCES
     src/Shader.cpp
     src/Heightfield.cpp
     src/Camera.cpp
+    src/GeoTIFFLoader.cpp
     src/QuadtreeRenderer.cpp
 )
 
@@ -37,6 +38,20 @@ add_library("ImGui" STATIC ${IMGUI_SOURCES})
 # Add executable
 add_executable(${PROJECT_NAME} ${SOURCES})
 
+# Find the GDAL package.
+# This will look for the GDALConfig.cmake file or use the FindGDAL module.
+find_package(GDAL REQUIRED)
+
+if(NOT GDAL_FOUND)
+    message(FATAL_ERROR "GDAL not found. Please install GDAL and try again.")
+endif()
+
+message(STATUS "Found GDAL version: ${GDAL_VERSION_STRING}")
+message(STATUS "GDAL include dir: ${GDAL_INCLUDE_DIRS}")
+message(STATUS "GDAL libraries: ${GDAL_LIBRARIES}")
+
+
+include_directories(${GDAL_INCLUDE_DIRS})
 
 # Find OpenGL
 find_package(OpenGL REQUIRED)
@@ -67,7 +82,7 @@ endif()
 # Add GLAD
 add_library(glad src/glad.c)  # Adjust the path if necessary
 target_include_directories(glad PUBLIC include)  # Adjust include path if necessary
-target_link_libraries(${PROJECT_NAME} glad ImGui)
+target_link_libraries(${PROJECT_NAME} glad ImGui ${GDAL_LIBRARIES})
 
 # Link other necessary libraries
 if(UNIX)

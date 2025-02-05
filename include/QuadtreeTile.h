@@ -6,73 +6,8 @@
 #include <unordered_map>
 #include <vector>
 #include <iostream>
-
-//----------------------------------------------------------
-// A simple Perlin noise implementation in 2D.
-// (This is a basic version; for more robust noise consider using an external library.)
-//----------------------------------------------------------
-namespace Perlin {
-    // Permutation table. The same list is repeated twice.
-    static int permutation[256] = {
-        151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,
-        140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,
-        247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,
-        57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,
-        74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,
-        60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,
-        65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,
-        200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,
-        52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,
-        207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,
-        119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,
-        129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,
-        218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,
-        81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,
-        184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,
-        222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
-    };
-
-    // Fade function as defined by Ken Perlin. This eases coordinate values
-    // so that they will "ease" towards integral values. This ends up smoothing the final output.
-    inline float fade(float t) {
-        return t * t * t * (t * (t * 6 - 15) + 10);
-    }
-
-    // Linear interpolation function.
-    inline float lerp(float t, float a, float b) {
-        return a + t * (b - a);
-    }
-
-    // Gradient function. Convert lower 4 bits of hash code into 12 gradient directions.
-    inline float grad(int hash, float x, float y) {
-        int h = hash & 7;      // Convert low 3 bits of hash into 8 directions
-        float u = h < 4 ? x : y;
-        float v = h < 4 ? y : x;
-        return ((h & 1) ? -u : u) + ((h & 2) ? -2.0f * v : 2.0f * v);
-    }
-
-    // 2D Perlin noise. Returns a noise value in roughly the range [-1, 1].
-    inline float noise(float x, float y) {
-        int X = static_cast<int>(std::floor(x)) & 255;
-        int Y = static_cast<int>(std::floor(y)) & 255;
-
-        x = x - std::floor(x);
-        y = y - std::floor(y);
-
-        float u = fade(x);
-        float v = fade(y);
-
-        int A = permutation[X] + Y;
-        int B = permutation[(X + 1) & 255] + Y;
-
-        float res = lerp(v,
-                         lerp(u, grad(permutation[A & 255], x, y),
-                                 grad(permutation[B & 255], x - 1, y)),
-                         lerp(u, grad(permutation[(A + 1) & 255], x, y - 1),
-                                 grad(permutation[(B + 1) & 255], x - 1, y - 1)));
-        return res;
-    }
-} // namespace Perlin
+#include "Perlin.h"
+#include "GeoTIFFLoader.h"  // Include the GeoTIFF loader
 
 //----------------------------------------------------------
 // Mesh structure and QuadtreeTile definition
@@ -86,13 +21,20 @@ struct Mesh {
 template<typename T>
 class QuadtreeTile {
 public:
-    // Constructor: creates a quadtree tile with a given boundary and type.
-    // Parameters:
-    //   x, y: Center of the tile.
-    //   width, height: Half-dimensions of the tile.
-    //   capacity: Maximum number of subdivisions before stopping.
-    //   type: The data type to store.
-    QuadtreeTile(float x, float y, float width, float height)
+    /**
+     * Constructor.
+     *
+     * @param x Center x coordinate of the tile.
+     * @param y Center y coordinate of the tile.
+     * @param width Half-width of the tile.
+     * @param height Half-height of the tile.
+     * @param geoLoader Optional pointer to a GeoTIFFLoader.
+     *
+     * If geoLoader is provided, the elevation values will be taken from the GeoTIFF.
+     * Otherwise, Perlin noise is used as a fallback.
+     */
+    QuadtreeTile(float x, float y, float width, float height, GeoTIFFLoader* geoLoader = nullptr)
+      : geoTIFFLoader(geoLoader)
     {
         tree = new QuadTree<int>(x, y, width, height);
         tree->bucketInitializedCallback = [this](QuadTree<int>* node) {
@@ -108,12 +50,9 @@ public:
         delete tree;
     }
 
-    // Public method to update the LOD based on the camera position.
-    // Parameters:
-    //   cameraX, cameraY, cameraZ: The camera's position.
-    //   splitThreshold: Distance threshold below which nodes should subdivide.
-    //   mergeThreshold: Distance threshold above which nodes should merge.
-    void updateLOD(float cameraX, float cameraY, float cameraZ, float splitThreshold, float mergeThreshold, int& subdivisions) {
+    void updateLOD(float cameraX, float cameraY, float cameraZ,
+                   float splitThreshold, float mergeThreshold, int& subdivisions)
+    {
         updateLODRec(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
     }
 
@@ -124,10 +63,9 @@ public:
     }
 
     size_t getMemoryUsage() const {
-        size_t totalMemory = 0.0;
+        size_t totalMemory = 0;
         for (const auto& bucketMesh : bucketMeshes) {
             const Mesh& mesh = bucketMesh.second;
-            // Estimate the memory used by the vertices and indices.
             totalMemory += mesh.vertices.capacity() * sizeof(float);
             totalMemory += mesh.indices.capacity() * sizeof(int);
         }
@@ -162,9 +100,9 @@ private:
         else if (cameraY > bottom)
             dy = cameraY - bottom;
         
-        float dz = 0.0f - cameraZ;  // Assuming terrain is at z=0
+        float dz = getElevation(boundary.x,boundary.y) - cameraZ;  // Assuming terrain is at z=0
 
-        float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
         int level = node->getLevel();
         float effectiveSplitThreshold = splitThreshold / (level + 1);
@@ -176,10 +114,14 @@ private:
                 subdivisions++; 
             }
             if (node->isDivided()) {
-                updateLODRec(node->getNortheastNonConst(), cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
-                updateLODRec(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
-                updateLODRec(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
-                updateLODRec(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
+                updateLODRec(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
+                               splitThreshold, mergeThreshold, subdivisions);
+                updateLODRec(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ,
+                               splitThreshold, mergeThreshold, subdivisions);
+                updateLODRec(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ,
+                               splitThreshold, mergeThreshold, subdivisions);
+                updateLODRec(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ,
+                               splitThreshold, mergeThreshold, subdivisions);
             }
         }
         else if (distance > effectiveMergeThreshold) {
@@ -191,24 +133,93 @@ private:
 
     // Called when a new bucket (node) is created.
     void onNewBucket(QuadTree<int>* node) {
-        std::cout << "New bucket created at level " << node->getLevel() << std::endl;
         int level = node->getLevel();
         typename QuadTree<int>::QuadBoundary bounds = node->getBoundary();
 
         Mesh mesh = generateTriangularMesh(bounds.x, bounds.y, bounds.width, bounds.height, level);
-        std::cout << "Mesh has " << mesh.vertices.size() / 3 << " vertices and " << mesh.indices.size() / 3 << " triangles." << std::endl;
         bucketMeshes[node] = mesh;
     }
 
+    // Called when a bucket (node) is unloaded.
     void onUnloadBucket(QuadTree<int>* node) {
-        std::cout << "Bucket unloaded at level " << node->getLevel() << std::endl;
         auto it = bucketMeshes.find(node);
         if (it != bucketMeshes.end()) {
             bucketMeshes.erase(it);
-            std::cout << "Mesh for bucket at level " << node->getLevel() << " removed." << std::endl;
         }
     }
 
+    /**
+     * Retrieves the elevation at a given (x, y) coordinate.
+     *
+     * If a GeoTIFFLoader is provided, it converts world coordinates (x, y) to pixel
+     * coordinates using the geotransform and returns the elevation from the raster data.
+     * Otherwise, it falls back to generating elevation using Perlin noise.
+     */
+    float getElevation(float x, float y) {
+        if (geoTIFFLoader) {
+            const std::vector<double>& gt = geoTIFFLoader->getGeoTransform();
+            // Assuming the geotransform is of the form:
+            // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
+            double originX = gt[0];
+            double pixelWidth = gt[1];
+            // double originY = gt[3];
+            double originY = 0.0; // as used in the original code
+            double pixelHeight = gt[5];
+
+            // Compute the fractional pixel indices.
+            double col_f = (x - originX) / pixelWidth;
+            double row_f = (y - originY) / pixelHeight;
+
+            // Determine the indices of the four surrounding pixels.
+            int col0 = static_cast<int>(std::floor(col_f));
+            int row0 = static_cast<int>(std::floor(row_f));
+            int col1 = col0 + 1;
+            int row1 = row0 + 1;
+
+            int width = geoTIFFLoader->getWidth();
+            int height = geoTIFFLoader->getHeight();
+            const std::vector<float>& elevationData = geoTIFFLoader->getElevationData();
+            
+            if (col0 >= 0 && row0 >= 0 && col1 < width && row1 < height) {
+                // Retrieve the elevation values from the four surrounding pixels.
+                float v00 = elevationData[row0 * width + col0]; // top-left
+                float v10 = elevationData[row0 * width + col1]; // top-right
+                float v01 = elevationData[row1 * width + col0]; // bottom-left
+                float v11 = elevationData[row1 * width + col1]; // bottom-right
+
+                // Compute the fractional part.
+                double tx = col_f - col0;
+                double ty = row_f - row0;
+
+                // Perform bilinear interpolation.
+                float interpolatedValue = static_cast<float>(
+                    (1 - tx) * (1 - ty) * v00 +
+                    tx       * (1 - ty) * v10 +
+                    (1 - tx) * ty       * v01 +
+                    tx       * ty       * v11
+                );
+
+                std::cout << interpolatedValue << std::endl;
+                return interpolatedValue;
+            }
+            
+            // std::cout << y << " " << originY << std::endl;
+
+            return 0.0f;
+        } else {
+            // Fallback: use Perlin noise.
+            float frequency = 0.1f;
+            float amplitude = 1.0f;
+            return Perlin::noise(x * frequency, y * frequency) * amplitude;
+        }
+    }
+
+    /**
+     * Generates a triangular mesh for the tile.
+     *
+     * The elevation for each vertex is computed using either the GeoTIFF data
+     * (if available) or Perlin noise.
+     */
     Mesh generateTriangularMesh(float centerX, float centerY, float halfWidth, float halfHeight, int level) {
         Mesh mesh;
 
@@ -221,20 +232,19 @@ private:
         float startX = centerX - halfWidth;
         float startY = centerY - halfHeight;
 
-        float frequency = 0.1f; 
-        float amplitude = 1.0f; 
-
+        // Generate vertices.
         for (int j = 0; j < numVerticesPerSide; ++j) {
             for (int i = 0; i < numVerticesPerSide; ++i) {
                 float x = startX + i * stepX;
                 float y = startY + j * stepY;
-                float noiseValue = Perlin::noise(x * frequency, y * frequency) * amplitude;
+                float z = getElevation(x, y);
                 mesh.vertices.push_back(x);
                 mesh.vertices.push_back(y);
-                mesh.vertices.push_back(noiseValue);
+                mesh.vertices.push_back(z);
             }
         }
 
+        // Generate indices.
         for (int j = 0; j < divisions; ++j) {
             for (int i = 0; i < divisions; ++i) {
                 int topLeft = j * numVerticesPerSide + i;
@@ -259,7 +269,10 @@ private:
 
     // Pointer to the underlying QuadTree.
     QuadTree<T>* tree;
+    // Mapping from a quadtree node to its mesh.
     std::unordered_map<QuadTree<int>*, Mesh> bucketMeshes;
+    // Optional pointer to a GeoTIFFLoader for elevation data.
+    GeoTIFFLoader* geoTIFFLoader = nullptr;
 };
 
 #endif // QUADTREE_TILE_H

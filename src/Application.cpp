@@ -16,7 +16,7 @@ const float DEFAULT_HEIGHT_SCALE = 10.0f;
 Application::Application(int width, int height, const char* title)
     : SCR_WIDTH(width), SCR_HEIGHT(height), windowTitle(title), window(nullptr),
       shader(nullptr), heightfield(nullptr), 
-      camera(glm::vec3(0.0f, 50.0f, 100.0f)), // Initial camera position
+      camera(glm::vec3(-50.0f, -50.0f, -1686.0f)), // Initial camera position
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),

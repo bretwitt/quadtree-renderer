@@ -43,6 +43,7 @@ private:
     QuadtreeRenderer* renderer;
     BucketMeshRenderer* bucket_renderer;
 
+
     // Camera
     Camera camera;
     float lastX;
