@@ -20,9 +20,12 @@ Application::Application(int width, int height, const char* title)
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
-      qt_world(100,4, 120.0f,120.0f),
+      qt_world(256, 12, 1200.0f,120.0f),
       renderer(nullptr),
-      bucket_renderer(nullptr)
+      bucket_renderer(nullptr), 
+      terrainShader(nullptr),      
+      terrainShaderActive(false),
+      terrainShaderKeyPressed(false)
 {
     if(!init())
     {
@@ -43,6 +46,7 @@ Application::~Application()
     delete heightfield;
     delete renderer;
     delete bucket_renderer;
+    delete terrainShader;
     glfwTerminate();
 }
 
@@ -99,6 +103,7 @@ bool Application::init()
 
     // Initialize Shader
     shader = new Shader("../shaders/vertex_shader.glsl", "../shaders/fragment_shader.glsl");
+    terrainShader = new Shader("../shaders/terrain_vertex_shader.glsl", "../shaders/terrain_fragment_shader.glsl");
 
     // Initialize Heightfield (if needed)
     // heightfield = new Heightfield(DEFAULT_GRID_SIZE, DEFAULT_GRID_SCALE, DEFAULT_HEIGHT_SCALE);
@@ -223,17 +228,25 @@ void Application::run()
         // ---------------------------
         // OpenGL Rendering Commands
         // ---------------------------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        shader->use();
+        Shader* currentShader = terrainShaderActive ? terrainShader : shader;
+
+        currentShader->use();
+
+        if(terrainShaderActive) {
+            currentShader->setVec3("lightDir", glm::normalize(glm::vec3(-0.2f, -1.0f, -0.3f)));
+            currentShader->setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+            currentShader->setVec3("viewPos", camera.Position);
+        }
 
         // Update matrices for shader
         glm::mat4 model = glm::mat4(1.0f);
-        shader->setMat4("model", model);
+        currentShader->setMat4("model", model);
 
         glm::mat4 view = camera.GetViewMatrix();
-        shader->setMat4("view", view);
+        currentShader->setMat4("view", view);
 
         glm::mat4 projection = glm::perspective(
             glm::radians(camera.Zoom),
@@ -241,11 +254,11 @@ void Application::run()
             0.1f,
             1000.0f
         );
-        shader->setMat4("projection", projection);
+        currentShader->setMat4("projection", projection);
 
         // Render your scene and custom renderers
         // renderer->update(qt_world.getTree(), shader->ID);
-        bucket_renderer->render(qt_world.getAllMeshes(), shader->ID);
+        bucket_renderer->render(qt_world.getAllMeshes(), currentShader->ID);
         renderer->draw();
 
         // Render the ImGui frame
@@ -300,6 +313,26 @@ void Application::processInput()
     if(glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE)
     {
         wireframeKeyPressed = false;
+    }
+    if(glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
+    {
+        if(!terrainShaderKeyPressed)
+        {
+            terrainShaderActive = !terrainShaderActive; // Toggle terrain shader
+            if(terrainShaderActive)
+            {
+                std::cout << "Terrain shader enabled.\n";
+            }
+            else
+            {
+                std::cout << "Terrain shader disabled. Reverting to default shader.\n";
+            }
+            terrainShaderKeyPressed = true; // Mark the key as pressed
+        }
+    }
+    if(glfwGetKey(window, GLFW_KEY_T) == GLFW_RELEASE)
+    {
+        terrainShaderKeyPressed = false;
     }
 }
 

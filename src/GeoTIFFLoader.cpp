@@ -39,7 +39,8 @@ void GeoTIFFLoader::load(const std::string& filename) {
     
     // Resize the elevation data vector to hold all pixels.
     elevationData.resize(width * height);
-
+    memoryUsage = static_cast<int>(elevationData.size() * sizeof(float) +
+                                   geoTransform.size() * sizeof(double));
     // Read the raster data into the elevationData vector.
     // We assume the data type is Float32; adjust GDT_Float32 if your data type is different.
     CPLErr err = poBand->RasterIO(GF_Read,
@@ -53,6 +54,7 @@ void GeoTIFFLoader::load(const std::string& filename) {
         throw std::runtime_error("RasterIO failed for GeoTIFF file: " + filename);
     }
     
+    
     // Close the dataset.
     GDALClose(poDataset);
 }
@@ -63,6 +65,10 @@ int GeoTIFFLoader::getWidth() const {
 
 int GeoTIFFLoader::getHeight() const {
     return height;
+}
+
+int GeoTIFFLoader::getMemoryUsage() const {
+    return memoryUsage;
 }
 
 const std::vector<float>& GeoTIFFLoader::getElevationData() const {

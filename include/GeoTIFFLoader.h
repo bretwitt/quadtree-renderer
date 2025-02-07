@@ -29,11 +29,14 @@ public:
     // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
     const std::vector<double>& getGeoTransform() const;
 
+    int getMemoryUsage() const;
+
 private:
     int width;
     int height;
     std::vector<float> elevationData;
     std::vector<double> geoTransform; // 6 parameters
+    int memoryUsage;
 };
 
 #endif // GEOTIFF_LOADER_H

@@ -126,6 +126,7 @@ public:
         for (const auto& pair : tiles) {
             totalMemory += pair.second->getMemoryUsage();
         }
+        totalMemory += + loader.getMemoryUsage();
         return totalMemory;
     }
 

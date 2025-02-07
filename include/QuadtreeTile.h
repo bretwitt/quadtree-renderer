@@ -16,6 +16,7 @@
 struct Mesh {
     std::vector<float> vertices; // Each vertex: x, y, z
     std::vector<int> indices;
+    std::vector<float> normals;
 };
 
 template<typename T>
@@ -105,8 +106,22 @@ private:
         float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
         int level = node->getLevel();
+
         float effectiveSplitThreshold = splitThreshold / (level + 1);
         float effectiveMergeThreshold = mergeThreshold / (level + 1);
+
+        if(level == 0) {
+            effectiveSplitThreshold = 1200.;
+        }
+        if(level == 1) {
+            effectiveSplitThreshold = 600.;
+        }
+        if(level == 2) {
+           effectiveSplitThreshold = 300.;
+        }
+        if(level == 3) {
+            effectiveSplitThreshold = 50.;
+        }
 
         if (distance < effectiveSplitThreshold && level < 4) {  
             if (!node->isDivided()) {
@@ -165,8 +180,8 @@ private:
             // double originY = gt[3];
             double originY = 0.0; // as used in the original code
             double pixelHeight = gt[5];
-
-            // Compute the fractional pixel indices.
+            
+            // Compute fractional pixel indices
             double col_f = (x - originX) / pixelWidth;
             double row_f = (y - originY) / pixelHeight;
 
@@ -179,7 +194,8 @@ private:
             int width = geoTIFFLoader->getWidth();
             int height = geoTIFFLoader->getHeight();
             const std::vector<float>& elevationData = geoTIFFLoader->getElevationData();
-            
+            float interpolatedValue = 0.0;
+
             if (col0 >= 0 && row0 >= 0 && col1 < width && row1 < height) {
                 // Retrieve the elevation values from the four surrounding pixels.
                 float v00 = elevationData[row0 * width + col0]; // top-left
@@ -192,16 +208,25 @@ private:
                 double ty = row_f - row0;
 
                 // Perform bilinear interpolation.
-                float interpolatedValue = static_cast<float>(
+                interpolatedValue = static_cast<float>(
                     (1 - tx) * (1 - ty) * v00 +
                     tx       * (1 - ty) * v10 +
                     (1 - tx) * ty       * v01 +
                     tx       * ty       * v11
                 );
-
-                std::cout << interpolatedValue << std::endl;
-                return interpolatedValue;
             }
+
+            // Finally, perform bicubic interpolation on the 4×4 patch
+
+            float alpha = 0.7;
+            float frequency = 0.1f;
+            float amplitude = 0.25f;
+
+            float upscalePerlin = Perlin::noise(x * frequency, y * frequency) * amplitude;
+
+            // upscalePerlin *= Perlin::noise(x * frequency, y * frequency) * amplitude;
+
+            return interpolatedValue + (alpha*upscalePerlin);
             
             // std::cout << y << " " << originY << std::endl;
 
@@ -213,6 +238,44 @@ private:
             return Perlin::noise(x * frequency, y * frequency) * amplitude;
         }
     }
+
+    // Cubic interpolation between four known values p0, p1, p2, p3, given a
+    // fractional position t in [0, 1]. 
+    static float cubicInterpolate(float p0, float p1, float p2, float p3, float t)
+    {
+        float a = (-0.5f * p0) + (1.5f * p1) - (1.5f * p2) + (0.5f * p3);
+        float b = (p0) - (2.5f * p1) + (2.0f * p2) - (0.5f * p3);
+        float c = (-0.5f * p0) + (0.5f * p2);
+        float d = p1;
+
+        return a * (t * t * t) + b * (t * t) + c * t + d;
+    }
+
+    static float cubicHermite(float p0, float p1, float p2, float p3, float t)
+    {
+        float a0 = p3 - p2 - p0 + p1;
+        float a1 = p0 - p1 - a0;
+        float a2 = p2 - p0;
+        float a3 = p1;
+
+        return a0*(t*t*t) + a1*(t*t) + a2*t + a3;
+    }
+
+    static float bicubicInterpolate(
+        const float patch[4][4],  // 4×4 neighborhood
+        float tx,                 // fractional coordinate in x
+        float ty)                 // fractional coordinate in y
+    {
+        // First, interpolate each of the 4 rows in the x direction
+        float col0 = cubicInterpolate(patch[0][0], patch[0][1], patch[0][2], patch[0][3], tx);
+        float col1 = cubicInterpolate(patch[1][0], patch[1][1], patch[1][2], patch[1][3], tx);
+        float col2 = cubicInterpolate(patch[2][0], patch[2][1], patch[2][2], patch[2][3], tx);
+        float col3 = cubicInterpolate(patch[3][0], patch[3][1], patch[3][2], patch[3][3], tx);
+
+        // Now interpolate the resulting 4 values in the y direction
+        return cubicInterpolate(col0, col1, col2, col3, ty);
+    }
+
 
     /**
      * Generates a triangular mesh for the tile.
@@ -264,8 +327,84 @@ private:
             }
         }
 
+        calculateNormals(mesh);
         return mesh;
     }
+
+    // Cross product helper
+    static inline void cross(const float* a, const float* b, float* result) {
+        result[0] = a[1] * b[2] - a[2] * b[1];
+        result[1] = a[2] * b[0] - a[0] * b[2];
+        result[2] = a[0] * b[1] - a[1] * b[0];
+    }
+
+    // Normalize helper
+    static inline void normalize(float* v) {
+        float length = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        if (length > 1e-8f) {
+            v[0] /= length;
+            v[1] /= length;
+            v[2] /= length;
+        }
+    }
+
+    void calculateNormals(Mesh& mesh)
+    {
+        const size_t vertexCount = mesh.vertices.size() / 3;
+        mesh.normals.resize(mesh.vertices.size(), 0.0f); // 3 floats per vertex, initialized to 0
+
+        // Accumulate face normals
+        for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+            int i0 = mesh.indices[i];
+            int i1 = mesh.indices[i + 1];
+            int i2 = mesh.indices[i + 2];
+
+            // Get the three vertices of this face (triangle)
+            float v0[3] = {
+                mesh.vertices[3 * i0 + 0],
+                mesh.vertices[3 * i0 + 1],
+                mesh.vertices[3 * i0 + 2]
+            };
+            float v1[3] = {
+                mesh.vertices[3 * i1 + 0],
+                mesh.vertices[3 * i1 + 1],
+                mesh.vertices[3 * i1 + 2]
+            };
+            float v2[3] = {
+                mesh.vertices[3 * i2 + 0],
+                mesh.vertices[3 * i2 + 1],
+                mesh.vertices[3 * i2 + 2]
+            };
+
+            // Edges of the triangle: v1 - v0, v2 - v0
+            float e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
+            float e2[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
+
+            // Face normal via cross product
+            float faceNormal[3];
+            cross(e1, e2, faceNormal);
+
+            // Accumulate this face normal into each of the triangle's vertices
+            mesh.normals[3 * i0 + 0] += faceNormal[0];
+            mesh.normals[3 * i0 + 1] += faceNormal[1];
+            mesh.normals[3 * i0 + 2] += faceNormal[2];
+
+            mesh.normals[3 * i1 + 0] += faceNormal[0];
+            mesh.normals[3 * i1 + 1] += faceNormal[1];
+            mesh.normals[3 * i1 + 2] += faceNormal[2];
+
+            mesh.normals[3 * i2 + 0] += faceNormal[0];
+            mesh.normals[3 * i2 + 1] += faceNormal[1];
+            mesh.normals[3 * i2 + 2] += faceNormal[2];
+        }
+
+        // Now normalize each accumulated normal
+        for (size_t i = 0; i < vertexCount; i++) {
+            float* normal = &mesh.normals[3 * i];
+            normalize(normal);
+        }
+    }
+
 
     // Pointer to the underlying QuadTree.
     QuadTree<T>* tree;

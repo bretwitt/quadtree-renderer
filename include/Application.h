@@ -43,6 +43,10 @@ private:
     QuadtreeRenderer* renderer;
     BucketMeshRenderer* bucket_renderer;
 
+    Shader* terrainShader;         // New terrain shader pointer
+    bool terrainShaderActive;      // Whether the terrain shader is active
+    bool terrainShaderKeyPressed;  // To prevent repeated toggling on key hold
+
 
     // Camera
     Camera camera;
@@ -72,6 +76,8 @@ private:
     
     // Helper to set user pointer for callbacks
     void setCallbacks();
+
+    
 };
 
 #endif

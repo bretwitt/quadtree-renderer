@@ -23,16 +23,13 @@ void QuadtreeRenderer::update(const QuadTree<int>* root, GLuint shaderProgram)
     GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
     glUniform3f(colorLoc,0,0,1);
 
-    // Bind and update buffer data.
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
 
-    // Assuming our shader expects a vec3 position attribute at location 0.
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Unbind (optional)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }
@@ -40,8 +37,6 @@ void QuadtreeRenderer::update(const QuadTree<int>* root, GLuint shaderProgram)
 void QuadtreeRenderer::draw() const
 {        
     glBindVertexArray(VAO);
-    // Each rectangle is drawn as 4 independent line segments.
-    // Since we push 8 vertices (2 per edge) per rectangle, the total number of vertices is vertices.size()/3.
     glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertices.size() / 3));
     glBindVertexArray(0);
 }
