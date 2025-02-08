@@ -15,11 +15,15 @@ set(SOURCES
     src/Camera.cpp
     src/GeoTIFFLoader.cpp
     src/QuadtreeRenderer.cpp
+    src/QuadtreeTile.cpp
+    src/QuadtreeWorld.cpp
+    src/TextureLoader.cpp
 )
 
 # Include directories
 include_directories(
     include
+    thirdparty/stb 
 )
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends)

@@ -75,7 +75,8 @@ public:
     const QuadTree* getSoutheast() const { return southeast; }
     const QuadTree* getSouthwest() const { return southwest; }
 
-    T getType() const { return type; }
+    T* getType() { return &type; }
+    
     void setType(T newType) { type = newType; }
 
     // Sets the scale (or depth) of the quadtree uniformly.
@@ -167,6 +168,8 @@ public:
                    southeast->getNumChildren() +
                    southwest->getNumChildren();
     }
+
+
 private:
     QuadBoundary boundary;
     T type;
