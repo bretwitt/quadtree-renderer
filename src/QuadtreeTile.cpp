@@ -238,8 +238,8 @@ float QuadtreeTile::getElevation(float x, float y) {
 }
 
 Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
-                                          float halfWidth, float halfHeight,
-                                          int level)
+                                            float halfWidth, float halfHeight,
+                                            int level)
 {
     Mesh mesh;
 
@@ -252,8 +252,9 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
     float startX = centerX - halfWidth;
     float startY = centerY - halfHeight;
 
-    // Generate vertices (x, y, z) + texture coordinates (u, v).
-    // We'll assign texture coords so that (i, j) maps to (u, v) in [0..1].
+    // -------------------------------------------------------
+    // 1) Generate the fine mesh vertices and texture coordinates.
+    // -------------------------------------------------------
     for (int j = 0; j < numVerticesPerSide; ++j)
     {
         for (int i = 0; i < numVerticesPerSide; ++i)
@@ -262,12 +263,12 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
             float y = startY + j * stepY;
             float z = getElevation(x, y);
 
-            // Push back position
+            // Push back position (x, y, z)
             mesh.vertices.push_back(x);
             mesh.vertices.push_back(y);
             mesh.vertices.push_back(z);
 
-            // Compute and push back texcoords
+            // Compute and push back texture coordinates (u, v) in [0,1].
             float u = static_cast<float>(i) / divisions; 
             float v = static_cast<float>(j) / divisions;
             mesh.texCoords.push_back(u);
@@ -275,7 +276,9 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
         }
     }
 
-    // Generate indices.
+    // -------------------------------------------------------
+    // 2) Generate indices for a triangular mesh.
+    // -------------------------------------------------------
     for (int j = 0; j < divisions; ++j)
     {
         for (int i = 0; i < divisions; ++i)
@@ -297,11 +300,15 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
         }
     }
 
-    // Compute vertex normals based on the positions and indices.
+
+    // -------------------------------------------------------
+    // 4) Compute vertex normals based on the positions and indices.
+    // -------------------------------------------------------
     calculateNormals(mesh);
 
     return mesh;
 }
+
 
 // ------------------------------
 // Inline Helper Functions

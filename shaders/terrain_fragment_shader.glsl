@@ -46,7 +46,7 @@ void main()
     // 3. Combine Lighting with Texture
     //----------------------------------------------------------
     vec3 lighting = ambient + diffuse + specular;
-    vec3 finalColor = texColor.rgb * lighting;  // modulate texture color by light
+    vec3 finalColor =  ambient+diffuse; //texColor.rgb * lighting;  // modulate texture color by light
 
     // Output final fragment color
     FragColor = vec4(finalColor, texColor.a);

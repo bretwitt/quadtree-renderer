@@ -258,7 +258,7 @@ void Application::run()
 
         // Render your scene and custom renderers
         // renderer->update(qt_world.getTree(), shader->ID);
-        bucket_renderer->render(qt_world.getAllMeshes(), currentShader->ID);
+        bucket_renderer->render(qt_world.getAllMeshes(), currentShader->ID, camera.Position);
         renderer->draw();
 
         // Render the ImGui frame

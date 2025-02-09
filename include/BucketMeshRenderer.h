@@ -76,7 +76,15 @@ public:
         // -- Prepare to interleave data:
         //    (pos.x, pos.y, pos.z, norm.x, norm.y, norm.z, tex.u, tex.v)
         std::vector<float> interleavedData;
-        interleavedData.reserve(vertexCount * 8); // 8 floats per vertex
+        interleavedData.reserve(vertexCount * 14); // 11 floats per vertex
+
+
+        // Compute the dimensions of the fine and parent grids.
+        // Fine grid: (2^(level+1)) + 1 vertices per side.
+        // Parent grid: (2^(level)) + 1 vertices per side.
+        int level = key->getLevel() + 1;
+        int fineSide = (1 << (level)) + 1;
+        int parentSide = (1 << (level - 1)) + 1;
 
         for (size_t i = 0; i < vertexCount; i++) {
             // Position (3 floats)
@@ -94,6 +102,23 @@ public:
             float u = mesh.texCoords[i * 2 + 0];
             float v = mesh.texCoords[i * 2 + 1];
 
+            // Coarse (3 floats)
+            int row = static_cast<int>(i) / fineSide;
+            int col = static_cast<int>(i) % fineSide;
+            int parentRow = row / 2;
+            int parentCol = col / 2;
+            int parentIndex = parentRow * parentSide + parentCol;
+            int coarseIdx = (parentRow*2*fineSide) + (parentCol*2);
+
+            float cx = mesh.vertices[coarseIdx*3];
+            float cy = mesh.vertices[coarseIdx*3+1];
+            float cz = mesh.vertices[coarseIdx*3+2];
+
+            float cnx = mesh.normals[coarseIdx*3];
+            float cny = mesh.normals[coarseIdx*3+1];
+            float cnz = mesh.normals[coarseIdx*3+2];
+
+
             // Add to our interleaved buffer
             interleavedData.push_back(px);
             interleavedData.push_back(py);
@@ -103,6 +128,12 @@ public:
             interleavedData.push_back(nz);
             interleavedData.push_back(u);
             interleavedData.push_back(v);
+            interleavedData.push_back(cx);
+            interleavedData.push_back(cy);
+            interleavedData.push_back(cz);
+            interleavedData.push_back(cnx);
+            interleavedData.push_back(cny);
+            interleavedData.push_back(cnz);
         }
 
         // Bind & upload data to the GPU
@@ -133,16 +164,23 @@ public:
         // -----------------------------------------------------------------
 
         // Position -> layout (location = 0)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
 
         // Normal -> layout (location = 1)
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
 
         // TexCoord -> layout (location = 2)
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(6 * sizeof(float)));
         glEnableVertexAttribArray(2);
+
+        // Coarse Height -> layout (location = 3)
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        // Coarse Normal  -> layout (location = 4)    
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
+        glEnableVertexAttribArray(4);
 
 
         // Store index count
@@ -155,15 +193,9 @@ public:
     }
 
     // Renders all meshes stored in the bucketMeshes map.
-    void render(const std::unordered_map<QuadTree<TileMetadata>*, Mesh>& bucketMeshes, GLuint shaderProgram) {
+    void render(const std::unordered_map<QuadTree<TileMetadata>*, Mesh>& bucketMeshes, GLuint shaderProgram, glm::vec3 cameraPos) {
         glUseProgram(shaderProgram);
         GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
-
-        // Get uniform locations for the corner vertices (expected as vec3 in the shader)
-        GLint uLVertexLoc = glGetUniformLocation(shaderProgram, "uLVertex");
-        GLint uRVertexLoc = glGetUniformLocation(shaderProgram, "uRVertex");
-        GLint bLVertexLoc = glGetUniformLocation(shaderProgram, "bLVertex");
-        GLint bRVertexLoc = glGetUniformLocation(shaderProgram, "bRVertex");
 
 
         glActiveTexture(GL_TEXTURE0);
@@ -172,7 +204,11 @@ public:
         // Let the shader know which texture unit to use (0).
         GLint textureLoc = glGetUniformLocation(shaderProgram, "terrainTexture");
         glUniform1i(textureLoc, 0);
+
         
+        GLint cameraPosLoc = glGetUniformLocation(shaderProgram, "cameraPos");
+        glUniform3fv(cameraPosLoc, 1, glm::value_ptr(cameraPos));
+
         // Iterate over each bucket's mesh.
         for (const auto& entry : bucketMeshes) {
             QuadTree<TileMetadata>* key = entry.first;
@@ -195,46 +231,6 @@ public:
             }
             glUniform3f(colorLoc, r, g, b);
 
-            auto boundary = key->getBoundary();
-
-            // --- Calculate boundaries from center (x, y) and width ---
-            // Assuming the QuadTree node (or its metadata) provides these functions:
-            float centerX = boundary.x;     // Tile center x-coordinate
-            float centerY = boundary.y;     // Tile center y-coordinate
-            float tileWidth = boundary.width; // Tile width (assumed square)
-
-            float halfWidth = tileWidth * 0.5f;
-            float left   = centerX - halfWidth;
-            float right  = centerX + halfWidth;
-            float bottom = centerY - halfWidth;
-            float top    = centerY + halfWidth;
-            int gridWidth = 256 / (1 << key->getLevel());
-            int gridHeight = 256 / (1 << key->getLevel());
-
-            // --- Compute the height for each corner ---
-            int indexUL = 0;                          // Upper-left: row 0, col 0
-            int indexUR = gridWidth - 1;                // Upper-right: row 0, col (gridWidth - 1)
-            int indexBL = (gridHeight - 1) * gridWidth; // Bottom-left: row (gridHeight - 1), col 0
-            int indexBR = (gridHeight - 1) * gridWidth + (gridWidth - 1); // Bottom-right
-
-            // Now, retrieve the height values from mesh.vertices:
-            float heightUL = mesh.vertices[indexUL+2];
-            float heightUR = mesh.vertices[(3*indexUR)+2];
-            float heightBL = mesh.vertices[(3*indexBL)+2];
-            float heightBR = mesh.vertices[(3*indexBR)+2];
-
-
-            // Pass the corner positions (with heights) to the shader.
-            // Here we assume the shader expects a vec3 with (x, height, y).
-            glUniform3f(uLVertexLoc, left, top, heightUL);
-            glUniform3f(uRVertexLoc, right, top, heightUR);
-            glUniform3f(bLVertexLoc, left, bottom, heightBL);
-            glUniform3f(bRVertexLoc, right,bottom, heightBR);
-
-            std::cout << heightUL << std::endl;
-
-
-
             float splitTicks_ = key->getType()->ticksSinceSplit;
 
             if(splitTicks_ != -1) {
@@ -243,8 +239,14 @@ public:
                 splitTicks_ = 0.0;
             }
             
+
             GLint splitTicksLoc = glGetUniformLocation(shaderProgram, "splitTicks");
             glUniform1f(splitTicksLoc, splitTicks_);
+
+                        
+            GLint levelLoc = glGetUniformLocation(shaderProgram, "level");
+            glUniform1f(levelLoc, level);
+            
 
             // glUniform1f()
             // --- Render the mesh ---
