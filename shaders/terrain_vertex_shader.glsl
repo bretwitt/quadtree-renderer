@@ -23,17 +23,22 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoords;
 
+
 void main()
 {
     vec4 worldPosD = model*vec4(aPos,1.0);
     float distance = length(cameraPos-worldPosD.xyz);
 
-    float maxDist = 3000/level;
+    float thresholds[4] = float[](1200.0, 600.0 + 400, 400.0, 50.0);
+
+    int clampedLevel = int(clamp(level - 1, 0.0, 3.0));
+    float maxDist = thresholds[clampedLevel];
+    //float maxDist = 1.0;
 
 
     float distanceFactor = clamp(distance / maxDist, 0.0, 1.0);
 
-    float morphFac = distanceFactor; //*splitTicks;
+    float morphFac = distanceFactor*splitTicks;
 
     vec3 morphPos = mix(aPos, aCoarse, morphFac);
 

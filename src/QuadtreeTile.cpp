@@ -79,6 +79,9 @@ size_t QuadtreeTile::getMemoryUsage() const {
         const Mesh& mesh = bucketMesh.second;
         totalMemory += mesh.vertices.capacity() * sizeof(float);
         totalMemory += mesh.indices.capacity() * sizeof(int);
+        totalMemory += mesh.normals.capacity() * sizeof(float);
+        totalMemory += mesh.texCoords.capacity() * sizeof(int);
+        totalMemory += mesh.coarseNormals.capacity() * sizeof(int);
     }
     return totalMemory;
 }
@@ -161,9 +164,11 @@ void QuadtreeTile::onNewBucket(QuadTree<TileMetadata>* node) {
     int level = node->getLevel();
     QuadTree<TileMetadata>::QuadBoundary bounds = node->getBoundary();
 
+
     Mesh mesh = generateTriangularMesh(bounds.x, bounds.y, bounds.width, bounds.height, level);
     bucketMeshes[node] = mesh;
 
+   
     node->getType()->ticksSinceSplit = 0;
 }
 
@@ -305,6 +310,7 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
     // 4) Compute vertex normals based on the positions and indices.
     // -------------------------------------------------------
     calculateNormals(mesh);
+    // calculateCoarseNormals(mesh);
 
     return mesh;
 }
@@ -379,4 +385,118 @@ void QuadtreeTile::calculateNormals(Mesh& mesh)
         float* normal = &mesh.normals[3 * i];
         normalize(normal);
     }
+}
+
+// Assumptions:
+//   - The fine mesh is a grid of vertices with dimensions fineWidth x fineHeight.
+//   - mesh.vertices is a flat vector of floats (x,y,z, x,y,z, ...).
+//   - There is a mesh.coarseNormals field (a std::vector<float>) where we store the result.
+//   - Functions cross(e1, e2, result) and normalize(vec) are available.
+//   - The fine mesh vertex order is row–major (i.e. index = x + y * fineWidth).
+
+void QuadtreeTile::calculateCoarseNormals(Mesh& mesh)
+{
+    // Determine coarse grid dimensions (parent grid: every 2nd vertex)
+    int fineWidth = mesh.vertices.size() / 3;
+    int coarseWidth  = (fineWidth   + 1) / 2;
+    int coarseHeight  = (fineWidth  + 1) / 2;
+
+    // 1. Extract parent vertices from the fine mesh.
+    //    The parent's vertex at grid position (i, j) comes from the fine mesh at (2*i, 2*j).
+    std::vector<float> coarseVertices;
+    coarseVertices.resize(coarseWidth * coarseHeight * 3, 0.0f);
+
+    for (int y = 0; y < coarseHeight; ++y) {
+        for (int x = 0; x < coarseWidth; ++x) {
+            int fineX = 2 * x;
+            int fineY = 2 * y;
+            int fineIndex = fineY * fineWidth + fineX;        // index into the fine grid
+            int coarseIndex = y * coarseWidth + x;            // index into the coarse grid
+
+            coarseVertices[3 * coarseIndex + 0] = mesh.vertices[3 * fineIndex + 0];
+            coarseVertices[3 * coarseIndex + 1] = mesh.vertices[3 * fineIndex + 1];
+            coarseVertices[3 * coarseIndex + 2] = mesh.vertices[3 * fineIndex + 2];
+        }
+    }
+
+    // 2. Build an index buffer for the coarse grid.
+    //    For each cell in the coarse grid (a quad), create two triangles.
+    // std::vector<unsigned int> coarseIndices;
+    // for (int y = 0; y < coarseHeight - 1; ++y) {
+    //     for (int x = 0; x < coarseWidth - 1; ++x) {
+    //         // The four corners of the current quad:
+    //         int i0 = y * coarseWidth + x;
+    //         int i1 = y * coarseWidth + (x + 1);
+    //         int i2 = (y + 1) * coarseWidth + x;
+    //         int i3 = (y + 1) * coarseWidth + (x + 1);
+
+    //         // First triangle (i0, i1, i2)
+    //         coarseIndices.push_back(i0);
+    //         coarseIndices.push_back(i1);
+    //         coarseIndices.push_back(i2);
+
+    //         // Second triangle (i1, i3, i2)
+    //         coarseIndices.push_back(i1);
+    //         coarseIndices.push_back(i3);
+    //         coarseIndices.push_back(i2);
+    //     }
+    // }
+
+    // 3. Allocate and initialize the coarse normals (one normal per coarse vertex)
+    std::vector<float> coarseNormals(coarseVertices.size(), 0.0f);
+
+    // // 4. For each coarse triangle, compute its face normal and add it to the normals
+    // //    of the three vertices that make up the triangle.
+    // for (size_t i = 0; i < coarseIndices.size(); i += 3) {
+    //     int i0 = coarseIndices[i];
+    //     int i1 = coarseIndices[i + 1];
+    //     int i2 = coarseIndices[i + 2];
+
+    //     float v0[3] = {
+    //         coarseVertices[3 * i0 + 0],
+    //         coarseVertices[3 * i0 + 1],
+    //         coarseVertices[3 * i0 + 2]
+    //     };
+    //     float v1[3] = {
+    //         coarseVertices[3 * i1 + 0],
+    //         coarseVertices[3 * i1 + 1],
+    //         coarseVertices[3 * i1 + 2]
+    //     };
+    //     float v2[3] = {
+    //         coarseVertices[3 * i2 + 0],
+    //         coarseVertices[3 * i2 + 1],
+    //         coarseVertices[3 * i2 + 2]
+    //     };
+
+    //     // Compute edge vectors.
+    //     float e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
+    //     float e2[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
+
+    //     // Compute the face normal (you may want to check for zero–length edges in production)
+    //     float faceNormal[3];
+    //     cross(e1, e2, faceNormal);
+
+    //     // Accumulate the face normal into each vertex normal.
+    //     coarseNormals[3 * i0 + 0] += faceNormal[0];
+    //     coarseNormals[3 * i0 + 1] += faceNormal[1];
+    //     coarseNormals[3 * i0 + 2] += faceNormal[2];
+
+    //     coarseNormals[3 * i1 + 0] += faceNormal[0];
+    //     coarseNormals[3 * i1 + 1] += faceNormal[1];
+    //     coarseNormals[3 * i1 + 2] += faceNormal[2];
+
+    //     coarseNormals[3 * i2 + 0] += faceNormal[0];
+    //     coarseNormals[3 * i2 + 1] += faceNormal[1];
+    //     coarseNormals[3 * i2 + 2] += faceNormal[2];
+    // }
+
+    // // 5. Normalize the accumulated normals for each coarse vertex.
+    // const size_t coarseVertexCount = coarseNormals.size() / 3;
+    // for (size_t i = 0; i < coarseVertexCount; ++i) {
+    //     normalize(&coarseNormals[3 * i]);
+    // }
+
+    // 6. (Optional) Store the coarse normals in the mesh.
+    //     For example, if Mesh has a member "coarseNormals":
+    mesh.coarseNormals = std::move(coarseNormals);
 }

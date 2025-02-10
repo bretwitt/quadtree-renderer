@@ -117,8 +117,13 @@ public:
             float cnx = mesh.normals[coarseIdx*3];
             float cny = mesh.normals[coarseIdx*3+1];
             float cnz = mesh.normals[coarseIdx*3+2];
-
-
+            // if(!mesh.coarseNormals.empty()) {
+            //     std::cout << "Test" << std::endl;
+            //     cnx = mesh.coarseNormals[parentIndex*3];
+            //     cny = mesh.coarseNormals[parentIndex*3+1];
+            //     cnz = mesh.coarseNormals[parentIndex*3+2];
+            // } 
+            
             // Add to our interleaved buffer
             interleavedData.push_back(px);
             interleavedData.push_back(py);
@@ -234,7 +239,7 @@ public:
             float splitTicks_ = key->getType()->ticksSinceSplit;
 
             if(splitTicks_ != -1) {
-                splitTicks_ = 1. - fmin(splitTicks_/100.,1.0);
+                splitTicks_ = 1. - fmin(splitTicks_/20.,1.0);
             } else {
                 splitTicks_ = 0.0;
             }

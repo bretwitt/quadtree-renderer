@@ -52,7 +52,7 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
                 float centerPosY = tileY * tileSize + tileSize * 0.5f;
                 float halfSize = tileSize * 0.5f;
                 tiles[key] = new QuadtreeTile(centerPosX, centerPosY, halfSize, halfSize, &loader);
-                std::cout << "Tile created at grid (" << tileX << ", " << tileY << ")\n";
+                //std::cout << "Tile created at grid (" << tileX << ", " << tileY << ")\n";
             }
         }
     }
@@ -60,7 +60,7 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
     // Remove tiles that are no longer within the view range.
     for (auto it = tiles.begin(); it != tiles.end(); ) {
         if (neededTiles.find(it->first) == neededTiles.end()) {
-            std::cout << "Tile removed at grid (" << it->first.x << ", " << it->first.y << ")\n";
+            //std::cout << "Tile removed at grid (" << it->first.x << ", " << it->first.y << ")\n";
             delete it->second;
             it = tiles.erase(it);
         } else {

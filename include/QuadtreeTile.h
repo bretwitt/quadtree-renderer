@@ -17,6 +17,7 @@ struct Mesh {
     std::vector<float> vertices;  // position data, 3 floats per vertex
     std::vector<float> normals;   // normal data, 3 floats per vertex
     std::vector<float> texCoords; // texture coords, 2 floats per vertex
+    std::vector<float> coarseNormals; // texture coords, 2 floats per vertex
     std::vector<unsigned int> indices;
 };
 
@@ -92,6 +93,7 @@ private:
     static inline void normalize(float* v);
 
     void calculateNormals(Mesh& mesh);
+    void calculateCoarseNormals(Mesh& mesh);
 
     // Pointer to the underlying QuadTree.
 
