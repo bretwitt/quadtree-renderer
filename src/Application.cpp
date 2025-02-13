@@ -20,7 +20,7 @@ Application::Application(int width, int height, const char* title)
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
-      qt_world(256, 12, 1200.0f,120.0f),
+      qt_world(16, 10, 1200.0f,120.0f),
       renderer(nullptr),
       bucket_renderer(nullptr), 
       terrainShader(nullptr),      
@@ -252,13 +252,13 @@ void Application::run()
             glm::radians(camera.Zoom),
             static_cast<float>(SCR_WIDTH) / static_cast<float>(SCR_HEIGHT),
             0.1f,
-            1000.0f
+            1200.0f
         );
         currentShader->setMat4("projection", projection);
 
         // Render your scene and custom renderers
         // renderer->update(qt_world.getTree(), shader->ID);
-        bucket_renderer->render(qt_world.getAllMeshes(), currentShader->ID, camera.Position);
+        bucket_renderer->render(&qt_world, currentShader->ID, camera.Position);
         renderer->draw();
 
         // Render the ImGui frame
@@ -334,6 +334,103 @@ void Application::processInput()
     {
         terrainShaderKeyPressed = false;
     }
+    // If the left mouse button is pressed, apply deformation at the center of the screen.
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+    {
+        // Compute the screen center in window coordinates.
+        float screenCenterX = SCR_WIDTH / 2.0f;
+        float screenCenterY = SCR_HEIGHT / 2.0f;
+        
+        // Prepare matrices and viewport for unprojecting.
+        glm::mat4 model = glm::mat4(1.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        glm::mat4 projection = glm::perspective(
+            glm::radians(camera.Zoom),
+            static_cast<float>(SCR_WIDTH) / static_cast<float>(SCR_HEIGHT),
+            0.1f,
+            1200.0f
+        );
+        glm::vec4 viewport(0.0f, 0.0f, SCR_WIDTH, SCR_HEIGHT);
+        
+        // Convert from screen space to world space.
+        glm::vec3 nearPoint = glm::unProject(glm::vec3(screenCenterX, SCR_HEIGHT / 2.0f, 0.0f),
+                                            view * model, projection, viewport);
+        glm::vec3 farPoint  = glm::unProject(glm::vec3(screenCenterX, SCR_HEIGHT / 2.0f, 1.0f),
+                                            view * model, projection, viewport);
+        
+        // Compute the ray direction.
+        glm::vec3 rayDir = glm::normalize(farPoint - nearPoint);
+
+        float t = 0.0f;
+        float tStep = 0.01f; // Adjust step size as needed
+        const int maxSteps = 1000;
+        bool intersectFound = false;
+        glm::vec3 intersectPoint;
+
+        float prevZ = nearPoint.z;
+        float prevT = 0.0f;
+
+        for (int i = 0; i < maxSteps; ++i) {
+            glm::vec3 samplePoint = nearPoint + t * rayDir;
+            float terrainZ = qt_world.getElevation(samplePoint.x, samplePoint.y);
+
+            if (terrainZ != -1) {
+                // Check if we are crossing the terrain surface
+                if (prevZ > terrainZ && samplePoint.z <= terrainZ + 1e-4) {
+                    intersectFound = true;
+
+                    // **Binary search refinement** for better accuracy
+                    float low = prevT, high = t;
+                    for (int j = 0; j < 30; ++j) { // 10 iterations of refinement
+                        float midT = (low + high) * 0.5f;
+                        glm::vec3 midPoint = nearPoint + midT * rayDir;
+                        float midTerrainZ = qt_world.getElevation(midPoint.x, midPoint.y);
+
+                        if (midPoint.z > midTerrainZ)
+                            low = midT;
+                        else
+                            high = midT;
+                    }
+
+                    // Use the refined intersection point
+                    t = (low + high) * 0.5f;
+                    intersectPoint = nearPoint + t * rayDir;
+                    break;
+                }
+            }
+    
+            // Store previous values
+            prevZ = samplePoint.z;
+            prevT = t;
+            
+            // Advance along the ray
+            t += tStep;
+        }
+
+        // Apply deformation if an intersection was found.
+        if (intersectFound)
+        {
+            // Define brush parameters.
+            const float brushSize = 0.1f;  // Size (in world units) of the square brush.
+            const float step = 0.01f;       // Sampling step (world units).
+            const float dz = -0.05f * deltaTime; // Deformation offset.
+            
+            // Loop over a square region centered at the intersection point.
+            for (float offsetY = -brushSize * 0.5f; offsetY <= brushSize * 0.5f; offsetY += step)
+            {
+                for (float offsetX = -brushSize * 0.5f; offsetX <= brushSize * 0.5f; offsetX += step)
+                {
+                    float deformX = intersectPoint.x + offsetX;
+                    float deformY = intersectPoint.y + offsetY;
+
+                    // Apply the deformation to the world.
+                    qt_world.deformVertex(deformX, deformY, dz);
+                    
+                }
+            }
+        }
+    }
+
 }
 
 void Application::framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height)

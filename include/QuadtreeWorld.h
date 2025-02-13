@@ -72,6 +72,13 @@ public:
     // Aggregates and returns all the meshes from each tile's buckets.
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> getAllMeshes();
 
+    float getElevation(float x, float y);
+    std::unordered_map<TileKey, QuadtreeTile*> getTiles() { return tiles; };
+
+    //std::unordered_set<QuadtreeTile*> getDirtyTiles() { return dirtyTiles; };
+
+
+    void deformVertex(float x, float y, float dz);
 private:
     float tileSize;              // Size of each square tile.
     int viewRangeInTiles;        // Number of tiles to keep active in each direction.
@@ -80,6 +87,8 @@ private:
 
     // A mapping from a grid key to a pointer to a QuadtreeTile.
     std::unordered_map<TileKey, QuadtreeTile*> tiles;
+    //std::unordered_set<QuadtreeTile*> dirtyTiles;
+
     GeoTIFFLoader loader;
 };
 

@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "stb_image.h"
+#include "QuadtreeWorld.h"
 
 // Structure to hold GPU-related objects for a mesh.
 struct GPU_Mesh {
@@ -24,6 +25,7 @@ public:
 
     GLuint terrainTextureID = 0;
     BucketMeshRenderer() {
+        /*
         // 1. Generate a texture object and store its ID:
         glGenTextures(1, &terrainTextureID);
 
@@ -47,7 +49,7 @@ public:
 
         // 6. Unbind texture if you want (optional):
         glBindTexture(GL_TEXTURE_2D, 0);
-
+        */
     }
     ~BucketMeshRenderer() {
         for (auto& pair : gpuMeshMap) {
@@ -105,10 +107,10 @@ public:
             // Coarse (3 floats)
             int row = static_cast<int>(i) / fineSide;
             int col = static_cast<int>(i) % fineSide;
-            int parentRow = row / 2;
-            int parentCol = col / 2;
+            int parentRow = row / 4;
+            int parentCol = col / 4;
             int parentIndex = parentRow * parentSide + parentCol;
-            int coarseIdx = (parentRow*2*fineSide) + (parentCol*2);
+            int coarseIdx = (parentRow*4*fineSide) + (parentCol*4);
 
             float cx = mesh.vertices[coarseIdx*3];
             float cy = mesh.vertices[coarseIdx*3+1];
@@ -118,10 +120,10 @@ public:
             float cny = mesh.normals[coarseIdx*3+1];
             float cnz = mesh.normals[coarseIdx*3+2];
             // if(!mesh.coarseNormals.empty()) {
-            //     std::cout << "Test" << std::endl;
-            //     cnx = mesh.coarseNormals[parentIndex*3];
-            //     cny = mesh.coarseNormals[parentIndex*3+1];
-            //     cnz = mesh.coarseNormals[parentIndex*3+2];
+            //     // std::cout << "Test" << std::endl;
+            //     cnx = mesh.coarseNormals[i*3];
+            //     cny = mesh.coarseNormals[i*3+1];
+            //     cnz = mesh.coarseNormals[i*3+2];
             // } 
             
             // Add to our interleaved buffer
@@ -183,6 +185,7 @@ public:
         // Coarse Height -> layout (location = 3)
         glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
         glEnableVertexAttribArray(3);
+
         // Coarse Normal  -> layout (location = 4)    
         glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
         glEnableVertexAttribArray(4);
@@ -198,13 +201,16 @@ public:
     }
 
     // Renders all meshes stored in the bucketMeshes map.
-    void render(const std::unordered_map<QuadTree<TileMetadata>*, Mesh>& bucketMeshes, GLuint shaderProgram, glm::vec3 cameraPos) {
+    void render(QuadtreeWorld* world, GLuint shaderProgram, glm::vec3 cameraPos) {
+        std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes = world->getAllMeshes();
+
+        
         glUseProgram(shaderProgram);
         GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
 
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, terrainTextureID);
+        // glActiveTexture(GL_TEXTURE0);
+        // glBindTexture(GL_TEXTURE_2D, terrainTextureID);
 
         // Let the shader know which texture unit to use (0).
         GLint textureLoc = glGetUniformLocation(shaderProgram, "terrainTexture");
@@ -231,7 +237,8 @@ public:
                 case 2: r = 0.0f; g = 0.0f; b = 1.0f; break; // Blue
                 case 3: r = 1.0f; g = 1.0f; b = 0.0f; break; // Yellow
                 case 4: r = 1.0f; g = 0.0f; b = 1.0f; break; // Magenta
-                case 5: r = 0.0f; g = 1.0f; b = 1.0f; break; // Cyan
+                case 5: r = 0.0f; g = 1.0f; b = 1.0f; break; // Cyan                case 0: r = 1.0f; g = 0.0f; b = 0.0f; break; // Red
+
                 default: r = 1.0f; g = 1.0f; b = 1.0f; break; // White (fallback)
             }
             glUniform3f(colorLoc, r, g, b);
@@ -239,7 +246,7 @@ public:
             float splitTicks_ = key->getType()->ticksSinceSplit;
 
             if(splitTicks_ != -1) {
-                splitTicks_ = 1. - fmin(splitTicks_/20.,1.0);
+                splitTicks_ = 1. - fmin(splitTicks_/100.,1.0);
             } else {
                 splitTicks_ = 0.0;
             }
@@ -261,8 +268,63 @@ public:
             glBindVertexArray(gpuMesh.VAO);
             glDrawElements(GL_TRIANGLES, gpuMesh.indexCount, GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
+
         }
+
+        renderDirtyVertices(world, shaderProgram);
+
     }
+
+    void renderDirtyVertices(QuadtreeWorld* world, GLuint shaderProgram) {
+        glUseProgram(shaderProgram);
+
+        std::vector<vec3> dirtyVertices;
+       
+        for(const auto& t : world->getTiles()) {
+            auto l = t.second->getTree()->getLeaves();
+            for(auto leaf : l) {
+                auto v = leaf->getType()->dirtyVertices;
+                dirtyVertices.insert(dirtyVertices.end(), v.begin(), v.end());
+            }
+        }
+
+        // for(const auto& t : world->getDirtyTiles()) {
+        //     auto dirty_tiles = t->getDirtyTiles();
+        //     for(auto tile : dirty_tiles) {
+        //         auto v = tile->getType()->dirtyVertices;
+        //         dirtyVertices.insert(dirtyVertices.end(), v.begin(), v.end());
+        //     }
+        // }
+
+        // std::cout << i << std::endl;
+        if (dirtyVertices.empty()) return;
+
+        GLuint dirtyVAO, dirtyVBO;
+        glGenVertexArrays(1, &dirtyVAO);
+        glGenBuffers(1, &dirtyVBO);
+
+        glBindVertexArray(dirtyVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, dirtyVBO);
+        glBufferData(GL_ARRAY_BUFFER, dirtyVertices.size() * sizeof(glm::vec3), dirtyVertices.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        // Set a unique color for dirty vertices
+        GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
+        glUniform3f(colorLoc, 1.0f, 0.0f, 0.0f); // Bright red
+
+        // Draw dirty vertices
+        glPointSize(8.0f); // Increase point size for visibility
+        glBindVertexArray(dirtyVAO);
+        glDrawArrays(GL_POINTS, 0, dirtyVertices.size());
+        glBindVertexArray(0);
+
+        // Cleanup
+        glDeleteBuffers(1, &dirtyVBO);
+        glDeleteVertexArrays(1, &dirtyVAO);
+    }
+
 };
 
 #endif // QUADTREE_BUCKET_RENDERER_H

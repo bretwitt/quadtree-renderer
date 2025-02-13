@@ -8,6 +8,7 @@
 #include <iostream>
 #include "Perlin.h"
 #include "GeoTIFFLoader.h"  // Include the GeoTIFF loader
+#include <unordered_set>
 
 //----------------------------------------------------------
 // Mesh structure and QuadtreeTile declaration
@@ -21,10 +22,23 @@ struct Mesh {
     std::vector<unsigned int> indices;
 };
 
+struct vec3 {
+
+    vec3(float x, float y, float z) {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+    float x = 0;
+    float y = 0;
+    float z = 0;
+};
 
 struct TileMetadata {
     int ticksSinceSplit = 0; // -1 if expired/never happened
     int ticksSinceMerge = 0; // -1 if expired/never happened
+    std::vector<vec3> dirtyVertices; // Deformations at highest LOD level
+    bool dirtyVerticesTransferred = false;
 };
 
 class QuadtreeTile {
@@ -52,9 +66,23 @@ public:
     void tick();
     void tickLeaves(QuadTree<TileMetadata>* node);
 
+    void deformVertex(float x, float y, float dz);
+
     QuadTree<TileMetadata>* getTree() const;
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
     size_t getMemoryUsage() const;
+
+    /**
+     * Retrieves the elevation at a given (x, y) coordinate.
+     *
+     * If a GeoTIFFLoader is provided, it converts world coordinates (x, y) to pixel
+     * coordinates using the geotransform and returns the elevation from the raster data.
+     * Otherwise, it falls back to generating elevation using Perlin noise.
+     */
+    float getElevation(float x, float y);
+    float computeBaseElevation(float x, float y);
+
+    //std::unordered_set<QuadTree<TileMetadata>*> getDirtyTiles() { return dirtyTiles; }
 
 private:
     // Recursive function to update level-of-detail.
@@ -65,18 +93,16 @@ private:
 
     // Called when a new bucket (node) is created.
     void onNewBucket(QuadTree<TileMetadata>* node);
+    void onSplit(QuadTree<TileMetadata>* parent);
+    void onMerge(QuadTree<TileMetadata>* node);
 
     // Called when a bucket (node) is unloaded.
     void onUnloadBucket(QuadTree<TileMetadata>* node);
 
-    /**
-     * Retrieves the elevation at a given (x, y) coordinate.
-     *
-     * If a GeoTIFFLoader is provided, it converts world coordinates (x, y) to pixel
-     * coordinates using the geotransform and returns the elevation from the raster data.
-     * Otherwise, it falls back to generating elevation using Perlin noise.
-     */
-    float getElevation(float x, float y);
+    void updateMesh(QuadTree<TileMetadata>* node);
+
+
+    QuadTree<TileMetadata>* findLeafNode(QuadTree<TileMetadata>* node, float x, float y);
 
     /**
      * Generates a triangular mesh for the tile.
@@ -93,7 +119,6 @@ private:
     static inline void normalize(float* v);
 
     void calculateNormals(Mesh& mesh);
-    void calculateCoarseNormals(Mesh& mesh);
 
     // Pointer to the underlying QuadTree.
 
@@ -102,6 +127,8 @@ private:
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes;
     // Optional pointer to a GeoTIFFLoader for elevation data.
     GeoTIFFLoader* geoTIFFLoader;
+
+    std::unordered_set<QuadTree<TileMetadata>*> dirtyTiles;
 };
 
 #endif // QUADTREE_TILE_H

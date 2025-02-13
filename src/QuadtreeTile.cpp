@@ -1,6 +1,7 @@
 #include "QuadtreeTile.h"
 #include <cmath>
 #include <cstdlib>
+#include <algorithm> 
 
 // ------------------------------
 // Constructor & Destructor
@@ -12,11 +13,19 @@ QuadtreeTile::QuadtreeTile(float x, float y, float width, float height, GeoTIFFL
     tree = new QuadTree<TileMetadata>(x, y, width, height);
     
     // Set up callbacks.
-    tree->bucketInitializedCallback = [this](QuadTree<TileMetadata>* node) {
+    tree->nodeInitCallback = [this](QuadTree<TileMetadata>* node) {
         this->onNewBucket(node);
     };
-    tree->bucketUnloadCallback = [this](QuadTree<TileMetadata>* node) {
+    tree->nodeDestroyCallback = [this](QuadTree<TileMetadata>* node) {
         this->onUnloadBucket(node);
+    };
+    tree->nodeSplitCallback = [this](QuadTree<TileMetadata>* parent) {
+        this->onUnloadBucket(parent);
+        this->onSplit(parent);
+    };
+    tree->nodeMergeCallback = [this](QuadTree<TileMetadata>* node) {
+        this->onNewBucket(node);
+        this->onMerge(node);
     };
 }
 
@@ -82,6 +91,7 @@ size_t QuadtreeTile::getMemoryUsage() const {
         totalMemory += mesh.normals.capacity() * sizeof(float);
         totalMemory += mesh.texCoords.capacity() * sizeof(int);
         totalMemory += mesh.coarseNormals.capacity() * sizeof(int);
+        
     }
     return totalMemory;
 }
@@ -126,18 +136,35 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
 
     if (level == 0) {
         effectiveSplitThreshold = 1200.f;
+        effectiveMergeThreshold = 1200.f;
+
     }
     if (level == 1) {
-        effectiveSplitThreshold = 600.f;
+        effectiveSplitThreshold = 20.f;
+        effectiveMergeThreshold = 20.f;
+
     }
     if (level == 2) {
-        effectiveSplitThreshold = 300.f;
+        effectiveSplitThreshold = 10.f;
+        effectiveMergeThreshold = 10.f;
     }
     if (level == 3) {
-        effectiveSplitThreshold = 50.f;
+        effectiveSplitThreshold = 2.f;
+        effectiveMergeThreshold = 2.f;
     }
 
-    if (distance < effectiveSplitThreshold && level < 4) {  
+    if (level == 4) {
+        effectiveSplitThreshold = 0.5f;
+        effectiveMergeThreshold = 0.5f;
+    }
+    if (level == 5) {
+        effectiveSplitThreshold = 0.1f;
+        effectiveMergeThreshold = 0.1f;
+
+    }
+
+
+    if (distance < effectiveSplitThreshold && level < 5) {  
         if (!node->isDivided()) {
             node->subdivide();
             subdivisions++; 
@@ -161,64 +188,173 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
 }
 
 void QuadtreeTile::onNewBucket(QuadTree<TileMetadata>* node) {
-    int level = node->getLevel();
-    QuadTree<TileMetadata>::QuadBoundary bounds = node->getBoundary();
-
-
-    Mesh mesh = generateTriangularMesh(bounds.x, bounds.y, bounds.width, bounds.height, level);
-    bucketMeshes[node] = mesh;
-
-   
-    node->getType()->ticksSinceSplit = 0;
+    updateMesh(node);
 }
 
+
+void QuadtreeTile::onSplit(QuadTree<TileMetadata>* parent) {
+    if (!parent) return;
+    
+    TileMetadata* parentMeta = parent->getType();
+    if (!parentMeta->dirtyVerticesTransferred) {
+        // Transfer dirty vertices to children using half-open bounds:
+        auto transferToChild = [parentMeta](QuadTree<TileMetadata>* child) {
+            if (!child) return;
+            TileMetadata* childMeta = child->getType();
+            childMeta->dirtyVertices.clear();
+            QuadTree<TileMetadata>::QuadBoundary bounds = child->getBoundary();
+            float left   = bounds.x - bounds.width;
+            float right  = bounds.x + bounds.width;
+            float top    = bounds.y - bounds.height;
+            float bottom = bounds.y + bounds.height;
+            
+            // Use a half-open interval: [left, right) and [top, bottom)
+            for (const auto& dp : parentMeta->dirtyVertices) {
+                if (dp.x >= left && dp.x < right &&
+                    dp.y >= top  && dp.y < bottom) {
+                    childMeta->dirtyVertices.push_back(dp);
+                }
+            }
+        };
+
+        // Transfer for each of the parent's four children.
+        transferToChild(parent->getNortheastNonConst());
+        transferToChild(parent->getNorthwestNonConst());
+        transferToChild(parent->getSoutheastNonConst());
+        transferToChild(parent->getSouthwestNonConst());
+
+        // Mark that we've transferred the parent's dirty vertices.
+        parentMeta->dirtyVerticesTransferred = true;
+        // Clear parent's dirty vertices so they won't be transferred again.
+        parentMeta->dirtyVertices.clear();
+    }
+ 
+    parent->getType()->ticksSinceSplit = 0; // Reset split timer.
+}
+
+
+// #include <cmath>      // for std::fabs
+// #include <algorithm>  // for std::sort and std::unique
+
+void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
+    TileMetadata* parentMeta = node->getType();
+    parentMeta->dirtyVertices.clear();
+
+    // Merge each child's dirty vertices into the parent's list.
+    auto mergeChildDirtyVertices = [parentMeta](QuadTree<TileMetadata>* child) {
+        if (!child) return;
+        TileMetadata* childMeta = child->getType();
+        parentMeta->dirtyVertices.insert(
+            parentMeta->dirtyVertices.end(),
+            childMeta->dirtyVertices.begin(),
+            childMeta->dirtyVertices.end()
+        );
+        childMeta->dirtyVertices.clear();
+    };
+
+    mergeChildDirtyVertices(node->getNortheastNonConst());
+    mergeChildDirtyVertices(node->getNorthwestNonConst());
+    mergeChildDirtyVertices(node->getSoutheastNonConst());
+    mergeChildDirtyVertices(node->getSouthwestNonConst());
+
+    // Deduplicate the merged dirty vertices.
+    // Assumes that 'vec3' has members .x, .y, and .z.
+    std::vector<vec3>& dv = parentMeta->dirtyVertices;
+    std::sort(dv.begin(), dv.end(), [](const vec3& a, const vec3& b) {
+        if (a.x != b.x) return a.x < b.x;
+        if (a.y != b.y) return a.y < b.y;
+        return a.z < b.z;
+    });
+    dv.erase(std::unique(dv.begin(), dv.end(), [](const vec3& a, const vec3& b) {
+        // Consider two vertices the same if they are nearly equal.
+        const float epsilon = 1e-6f;
+        return (std::fabs(a.x - b.x) < epsilon &&
+                std::fabs(a.y - b.y) < epsilon &&
+                std::fabs(a.z - b.z) < epsilon);
+    }), dv.end());
+
+    // Reset the merge tick counter.
+    node->getType()->ticksSinceMerge = 0;
+}
+
+
 void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
+    // Remove the mesh associated with this node (its children are being unloaded).
     auto it = bucketMeshes.find(node);
     if (it != bucketMeshes.end()) {
         bucketMeshes.erase(it);
     }
-    node->getType()->ticksSinceMerge = 0;
 
 }
 
-float QuadtreeTile::getElevation(float x, float y) {
+
+void QuadtreeTile::deformVertex(float x, float y, float dz)
+{
+    // Locate the leaf node covering (x,y).
+    QuadTree<TileMetadata>* leaf = findLeafNode(tree, x, y);
+    if (!leaf) {
+        // (x,y) is outside the terrain bounds.
+        return;
+    }
+    
+    // Retrieve the tile’s metadata.
+    TileMetadata* metadata = leaf->getType();
+    
+    // Instead of initializing a full grid from the mesh,
+    // we simply check whether there is already a deformed point near (x,y).
+    const int level = leaf->getLevel();
+    const float baseThreshold = 0.05f; // adjust this base value as needed
+    bool updated = false;
+    for (auto& dp : metadata->dirtyVertices) {
+        float dx = dp.x - x;
+        float dy = dp.y - y;
+        
+        if (std::sqrt(dx * dx + dy * dy) < baseThreshold) {
+            dp.z += dz;
+            updated = true;
+            break;
+        }
+    }
+    
+    if (!updated) {
+        // No existing dirty point is nearby, so add a new one.
+        vec3 newPoint{x,y,computeBaseElevation(x,y)+dz};
+        metadata->dirtyVertices.push_back(newPoint);
+    }
+
+    updateMesh(leaf);   
+}
+
+float QuadtreeTile::computeBaseElevation(float x, float y) {
     if (geoTIFFLoader) {
         const std::vector<double>& gt = geoTIFFLoader->getGeoTransform();
         // Assuming the geotransform is of the form:
         // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
         double originX = gt[0];
         double pixelWidth = gt[1];
-        // double originY = gt[3];
-        double originY = 0.0; // as used in the original code
+        // For consistency with your original code:
+        double originY = 0.0;
         double pixelHeight = gt[5];
         
-        // Compute fractional pixel indices.
         double col_f = (x - originX) / pixelWidth;
         double row_f = (y - originY) / pixelHeight;
-
-        // Determine the indices of the four surrounding pixels.
         int col0 = static_cast<int>(std::floor(col_f));
         int row0 = static_cast<int>(std::floor(row_f));
         int col1 = col0 + 1;
         int row1 = row0 + 1;
-
+        
         int width = geoTIFFLoader->getWidth();
         int height = geoTIFFLoader->getHeight();
         const std::vector<float>& elevationData = geoTIFFLoader->getElevationData();
         float interpolatedValue = 0.0f;
-
+        
         if (col0 >= 0 && row0 >= 0 && col1 < width && row1 < height) {
-            // Retrieve the elevation values from the four surrounding pixels.
             float v00 = elevationData[row0 * width + col0]; // top-left
             float v10 = elevationData[row0 * width + col1]; // top-right
             float v01 = elevationData[row1 * width + col0]; // bottom-left
             float v11 = elevationData[row1 * width + col1]; // bottom-right
-
-            // Compute the fractional part.
             double tx = col_f - col0;
             double ty = row_f - row0;
-
-            // Perform bilinear interpolation.
             interpolatedValue = static_cast<float>(
                 (1 - tx) * (1 - ty) * v00 +
                 tx       * (1 - ty) * v10 +
@@ -226,20 +362,87 @@ float QuadtreeTile::getElevation(float x, float y) {
                 tx       * ty       * v11
             );
         }
-
+        
+        // Optionally add some Perlin noise
         float alpha = 0.7f;
         float frequency = 0.1f;
         float amplitude = 0.25f;
-
         float upscalePerlin = Perlin::noise(x * frequency, y * frequency) * amplitude;
-
+        
         return interpolatedValue + (alpha * upscalePerlin);
     } else {
-        // Fallback: use Perlin noise.
         float frequency = 0.1f;
         float amplitude = 1.0f;
         return Perlin::noise(x * frequency, y * frequency) * amplitude;
     }
+}
+
+
+float QuadtreeTile::getElevation(float x, float y) {
+    float baseElevation = computeBaseElevation(x, y);
+
+    QuadTree<TileMetadata>* leafNode = findLeafNode(tree, x, y);
+    if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
+
+    const TileMetadata* metadata = leafNode->getType();
+    if (metadata->dirtyVertices.empty()) return baseElevation;  // No deformation.
+
+    float weightedSum = 0.0f, totalWeight = 0.0f;
+    // const float epsilon = 1e-5f;  // Prevent division by zero.
+    const float influenceRadius = 1.0f;
+
+    for (const auto& dp : metadata->dirtyVertices) {
+        float dx = x - dp.x;
+        float dy = y - dp.y;
+        float distance = std::sqrt(dx * dx + dy * dy) + 0.1;  
+
+        if(distance < influenceRadius) {
+            float weight = 1.0f/(distance);
+            weightedSum += (dp.z)*weight;
+            totalWeight+=weight;
+        }
+    }
+
+    return (totalWeight > 0.0f) ? weightedSum / totalWeight : baseElevation;
+}
+
+
+QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node, float x, float y) {
+    if (!node)
+        return nullptr;
+
+    // Get the node’s boundary.
+    QuadTree<TileMetadata>::QuadBoundary boundary = node->getBoundary();
+    float left   = boundary.x - boundary.width;
+    float right  = boundary.x + boundary.width;
+    float top    = boundary.y - boundary.height;
+    float bottom = boundary.y + boundary.height;
+
+    // If (x,y) lies outside this node, return nullptr.
+    if (x < left || x > right || y < top || y > bottom)
+        return nullptr;
+
+    // If not divided, this is the leaf.
+    if (!node->isDivided())
+        return node;
+
+    // Otherwise, search the children.
+    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), x, y);
+    if (found) return found;
+    found = findLeafNode(node->getNorthwestNonConst(), x, y);
+    if (found) return found;
+    found = findLeafNode(node->getSoutheastNonConst(), x, y);
+    if (found) return found;
+    return findLeafNode(node->getSouthwestNonConst(), x, y);
+}
+
+void QuadtreeTile::updateMesh(QuadTree<TileMetadata>* node) {
+    int level = node->getLevel();
+    QuadTree<TileMetadata>::QuadBoundary childBounds = node->getBoundary();
+
+    // Generate the mesh for the child.
+    Mesh mesh = generateTriangularMesh(childBounds.x, childBounds.y, childBounds.width, childBounds.height, level);
+    bucketMeshes[node] = mesh;
 }
 
 Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
@@ -385,118 +588,4 @@ void QuadtreeTile::calculateNormals(Mesh& mesh)
         float* normal = &mesh.normals[3 * i];
         normalize(normal);
     }
-}
-
-// Assumptions:
-//   - The fine mesh is a grid of vertices with dimensions fineWidth x fineHeight.
-//   - mesh.vertices is a flat vector of floats (x,y,z, x,y,z, ...).
-//   - There is a mesh.coarseNormals field (a std::vector<float>) where we store the result.
-//   - Functions cross(e1, e2, result) and normalize(vec) are available.
-//   - The fine mesh vertex order is row–major (i.e. index = x + y * fineWidth).
-
-void QuadtreeTile::calculateCoarseNormals(Mesh& mesh)
-{
-    // Determine coarse grid dimensions (parent grid: every 2nd vertex)
-    int fineWidth = mesh.vertices.size() / 3;
-    int coarseWidth  = (fineWidth   + 1) / 2;
-    int coarseHeight  = (fineWidth  + 1) / 2;
-
-    // 1. Extract parent vertices from the fine mesh.
-    //    The parent's vertex at grid position (i, j) comes from the fine mesh at (2*i, 2*j).
-    std::vector<float> coarseVertices;
-    coarseVertices.resize(coarseWidth * coarseHeight * 3, 0.0f);
-
-    for (int y = 0; y < coarseHeight; ++y) {
-        for (int x = 0; x < coarseWidth; ++x) {
-            int fineX = 2 * x;
-            int fineY = 2 * y;
-            int fineIndex = fineY * fineWidth + fineX;        // index into the fine grid
-            int coarseIndex = y * coarseWidth + x;            // index into the coarse grid
-
-            coarseVertices[3 * coarseIndex + 0] = mesh.vertices[3 * fineIndex + 0];
-            coarseVertices[3 * coarseIndex + 1] = mesh.vertices[3 * fineIndex + 1];
-            coarseVertices[3 * coarseIndex + 2] = mesh.vertices[3 * fineIndex + 2];
-        }
-    }
-
-    // 2. Build an index buffer for the coarse grid.
-    //    For each cell in the coarse grid (a quad), create two triangles.
-    // std::vector<unsigned int> coarseIndices;
-    // for (int y = 0; y < coarseHeight - 1; ++y) {
-    //     for (int x = 0; x < coarseWidth - 1; ++x) {
-    //         // The four corners of the current quad:
-    //         int i0 = y * coarseWidth + x;
-    //         int i1 = y * coarseWidth + (x + 1);
-    //         int i2 = (y + 1) * coarseWidth + x;
-    //         int i3 = (y + 1) * coarseWidth + (x + 1);
-
-    //         // First triangle (i0, i1, i2)
-    //         coarseIndices.push_back(i0);
-    //         coarseIndices.push_back(i1);
-    //         coarseIndices.push_back(i2);
-
-    //         // Second triangle (i1, i3, i2)
-    //         coarseIndices.push_back(i1);
-    //         coarseIndices.push_back(i3);
-    //         coarseIndices.push_back(i2);
-    //     }
-    // }
-
-    // 3. Allocate and initialize the coarse normals (one normal per coarse vertex)
-    std::vector<float> coarseNormals(coarseVertices.size(), 0.0f);
-
-    // // 4. For each coarse triangle, compute its face normal and add it to the normals
-    // //    of the three vertices that make up the triangle.
-    // for (size_t i = 0; i < coarseIndices.size(); i += 3) {
-    //     int i0 = coarseIndices[i];
-    //     int i1 = coarseIndices[i + 1];
-    //     int i2 = coarseIndices[i + 2];
-
-    //     float v0[3] = {
-    //         coarseVertices[3 * i0 + 0],
-    //         coarseVertices[3 * i0 + 1],
-    //         coarseVertices[3 * i0 + 2]
-    //     };
-    //     float v1[3] = {
-    //         coarseVertices[3 * i1 + 0],
-    //         coarseVertices[3 * i1 + 1],
-    //         coarseVertices[3 * i1 + 2]
-    //     };
-    //     float v2[3] = {
-    //         coarseVertices[3 * i2 + 0],
-    //         coarseVertices[3 * i2 + 1],
-    //         coarseVertices[3 * i2 + 2]
-    //     };
-
-    //     // Compute edge vectors.
-    //     float e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
-    //     float e2[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
-
-    //     // Compute the face normal (you may want to check for zero–length edges in production)
-    //     float faceNormal[3];
-    //     cross(e1, e2, faceNormal);
-
-    //     // Accumulate the face normal into each vertex normal.
-    //     coarseNormals[3 * i0 + 0] += faceNormal[0];
-    //     coarseNormals[3 * i0 + 1] += faceNormal[1];
-    //     coarseNormals[3 * i0 + 2] += faceNormal[2];
-
-    //     coarseNormals[3 * i1 + 0] += faceNormal[0];
-    //     coarseNormals[3 * i1 + 1] += faceNormal[1];
-    //     coarseNormals[3 * i1 + 2] += faceNormal[2];
-
-    //     coarseNormals[3 * i2 + 0] += faceNormal[0];
-    //     coarseNormals[3 * i2 + 1] += faceNormal[1];
-    //     coarseNormals[3 * i2 + 2] += faceNormal[2];
-    // }
-
-    // // 5. Normalize the accumulated normals for each coarse vertex.
-    // const size_t coarseVertexCount = coarseNormals.size() / 3;
-    // for (size_t i = 0; i < coarseVertexCount; ++i) {
-    //     normalize(&coarseNormals[3 * i]);
-    // }
-
-    // 6. (Optional) Store the coarse normals in the mesh.
-    //     For example, if Mesh has a member "coarseNormals":
-    mesh.coarseNormals = std::move(coarseNormals);
 }

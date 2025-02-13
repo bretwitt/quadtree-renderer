@@ -29,7 +29,7 @@ void main()
     vec4 worldPosD = model*vec4(aPos,1.0);
     float distance = length(cameraPos-worldPosD.xyz);
 
-    float thresholds[4] = float[](1200.0, 600.0 + 400, 400.0, 50.0);
+    float thresholds[6] = float[](1200.0 + 1000., 50.0 + 30.0, 10.0 + 20.0, 2.0 + 1.0,1.0 + 0.5,0.2 + 0.25);
 
     int clampedLevel = int(clamp(level - 1, 0.0, 3.0));
     float maxDist = thresholds[clampedLevel];
@@ -38,7 +38,7 @@ void main()
 
     float distanceFactor = clamp(distance / maxDist, 0.0, 1.0);
 
-    float morphFac = distanceFactor*splitTicks;
+    float morphFac = distanceFactor; //*splitTicks;
 
     vec3 morphPos = mix(aPos, aCoarse, morphFac);
 

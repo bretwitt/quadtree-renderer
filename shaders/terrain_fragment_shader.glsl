@@ -20,7 +20,7 @@ void main()
     // 1. Basic Ambient + Diffuse + Specular Lighting
     //----------------------------------------------------------
     // Ambient
-    float ambientStrength = 0.8;
+    float ambientStrength = 0.5;
     vec3 ambient = ambientStrength * lightColor;
 
     // Diffuse
@@ -45,8 +45,9 @@ void main()
     //----------------------------------------------------------
     // 3. Combine Lighting with Texture
     //----------------------------------------------------------
+    vec3 normColor = norm*0.5+0.5;
     vec3 lighting = ambient + diffuse + specular;
-    vec3 finalColor =  ambient+diffuse; //texColor.rgb * lighting;  // modulate texture color by light
+    vec3 finalColor = lighting; //texColor.rgb * lighting;  // modulate texture color by light
 
     // Output final fragment color
     FragColor = vec4(finalColor, texColor.a);

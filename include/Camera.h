@@ -18,9 +18,9 @@ enum Camera_Movement {
 // Here, we set YAW to 0 so that with zero pitch the camera faces along the positive X-axis.
 const float YAW         = 0.0f;   
 const float PITCH       = 0.0f;   // 0 degrees means level (no tilt up or down)
-const float SPEED       = 20.0f;
+const float SPEED       = 10.0f;
 const float SENSITIVITY = 0.05f;
-const float ZOOM        = 45.0f;
+const float ZOOM        = 45.0f;  // (unused in this modified version)
 
 class Camera
 {
@@ -37,7 +37,7 @@ public:
     // Camera options
     float MovementSpeed;
     float MouseSensitivity;
-    float Zoom;
+    float Zoom;  // (left in case you want to use it for something else)
 
     // Constructor with vectors.
     // Note: The default up vector is now (0, 0, 1) to make Z the upward direction.
@@ -104,14 +104,19 @@ public:
         updateCameraVectors();
     }
 
-    // Processes mouse scroll input.
+    // Processes mouse scroll input to adjust movement speed.
+    // Scrolling up (positive yoffset) increases the speed,
+    // while scrolling down (negative yoffset) decreases it.
     void ProcessMouseScroll(float yoffset)
     {
-        Zoom -= yoffset;
-        if (Zoom < 1.0f)
-            Zoom = 1.0f;
-        if (Zoom > 90.0f)
-            Zoom = 90.0f;
+        // Adjust the movement speed by the scroll offset.
+        MovementSpeed += yoffset;
+        
+        // Clamp the speed to a reasonable range.
+        if (MovementSpeed < 0.05f)
+            MovementSpeed = 0.05f;
+        if (MovementSpeed > 100.0f)
+            MovementSpeed = 100.0f;
     }
 
 private:
