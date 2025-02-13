@@ -389,12 +389,12 @@ float QuadtreeTile::getElevation(float x, float y) {
 
     float weightedSum = 0.0f, totalWeight = 0.0f;
     // const float epsilon = 1e-5f;  // Prevent division by zero.
-    const float influenceRadius = 1.0f;
+    const float influenceRadius = 1e-1f;
 
     for (const auto& dp : metadata->dirtyVertices) {
         float dx = x - dp.x;
         float dy = y - dp.y;
-        float distance = std::sqrt(dx * dx + dy * dy) + 0.1;  
+        float distance = std::sqrt(dx * dx + dy * dy);  
 
         if(distance < influenceRadius) {
             float weight = 1.0f/(distance);
