@@ -1,4 +1,4 @@
-#include "GeoTIFFLoader.h"
+#include "qtplanet/GeoTIFFLoader.h"
 #include "gdal_priv.h"
 #include "cpl_conv.h"  // for CPLMalloc
 #include <iostream>

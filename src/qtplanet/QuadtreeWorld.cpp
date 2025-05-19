@@ -1,4 +1,4 @@
-#include "QuadtreeWorld.h"
+#include "qtplanet/QuadtreeWorld.h"
 #include <algorithm>
 
 //---------------------------------------------------------------------

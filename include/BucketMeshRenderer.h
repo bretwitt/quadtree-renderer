@@ -1,7 +1,7 @@
 #ifndef QUADTREE_BUCKET_RENDERER_H
 #define QUADTREE_BUCKET_RENDERER_H
 
-#include "QuadtreeTile.h" // Assuming this header defines QuadTree<int>
+#include "qtplanet/QuadtreeTile.h" // Assuming this header defines QuadTree<int>
 #include <vector>
 #include <iostream>
 #include <glad/glad.h>
@@ -9,7 +9,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "stb_image.h"
-#include "QuadtreeWorld.h"
+#include "qtplanet/QuadtreeWorld.h"
 
 // Structure to hold GPU-related objects for a mesh.
 struct GPU_Mesh {

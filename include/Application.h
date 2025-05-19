@@ -10,8 +10,8 @@
 #include "Shader.h"
 #include "Heightfield.h"
 #include "Camera.h"
-#include "QuadtreeTile.h"
-#include "QuadtreeWorld.h"
+#include "qtplanet/QuadtreeTile.h"
+#include "qtplanet/QuadtreeWorld.h"
 
 #include "BucketMeshRenderer.h"
 
