@@ -13,7 +13,6 @@
 #include "QuadtreeTile.h"
 #include "QuadtreeWorld.h"
 
-#include "QuadtreeRenderer.h"
 #include "BucketMeshRenderer.h"
 
 class Application
@@ -40,7 +39,6 @@ private:
     Heightfield* heightfield;
     // QuadtreeTile<int> qt;
     QuadtreeWorld qt_world;
-    QuadtreeRenderer* renderer;
     BucketMeshRenderer* bucket_renderer;
 
     Shader* terrainShader;         // New terrain shader pointer
@@ -65,7 +63,7 @@ private:
     // Private methods
     bool init();
     void processInput();
-    static void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+    void framebuffer_size_callback(GLFWwindow* window, int width, int height);
     void mouse_callback(double xpos, double ypos);
     void scroll_callback(double xoffset, double yoffset);
 

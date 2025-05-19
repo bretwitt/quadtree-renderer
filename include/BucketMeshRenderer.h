@@ -24,33 +24,7 @@ public:
     std::unordered_map<QuadTree<TileMetadata>*, GPU_Mesh> gpuMeshMap;
 
     GLuint terrainTextureID = 0;
-    BucketMeshRenderer() {
-        /*
-        // 1. Generate a texture object and store its ID:
-        glGenTextures(1, &terrainTextureID);
-
-        // 2. Bind the texture so we can work with it:
-        glBindTexture(GL_TEXTURE_2D, terrainTextureID);
-
-        // 3. Upload or specify your texture data (width, height, format, etc.)
-        //    For example, using stbi to load an image:
-        int tWidth,tHeight,nrChannels;
-        unsigned char* data = stbi_load("../resources/checkerboard.png", &tWidth, &tHeight, &nrChannels, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tWidth, tHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-        // 4. Set texture parameters (wrapping, filtering, etc.):
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        // 5. Generate mipmaps if desired:
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        // 6. Unbind texture if you want (optional):
-        glBindTexture(GL_TEXTURE_2D, 0);
-        */
-    }
+    BucketMeshRenderer() {}
     ~BucketMeshRenderer() {
         for (auto& pair : gpuMeshMap) {
             glDeleteVertexArrays(1, &pair.second.VAO);
@@ -80,7 +54,6 @@ public:
         std::vector<float> interleavedData;
         interleavedData.reserve(vertexCount * 14); // 11 floats per vertex
 
-
         // Compute the dimensions of the fine and parent grids.
         // Fine grid: (2^(level+1)) + 1 vertices per side.
         // Parent grid: (2^(level)) + 1 vertices per side.
@@ -100,7 +73,6 @@ public:
             float nz = mesh.normals[i * 3 + 2];
 
             // TexCoord (2 floats)
-            // Make sure mesh.texCoords has valid data for each vertex
             float u = mesh.texCoords[i * 2 + 0];
             float v = mesh.texCoords[i * 2 + 1];
 

@@ -9,7 +9,6 @@
 QuadtreeTile::QuadtreeTile(float x, float y, float width, float height, GeoTIFFLoader* geoLoader)
     : geoTIFFLoader(geoLoader)
 {
-    // Create the quadtree (assumes QuadTree is now non-templated).
     tree = new QuadTree<TileMetadata>(x, y, width, height);
     
     // Set up callbacks.
@@ -125,7 +124,7 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
     else if (cameraY > bottom)
         dy = cameraY - bottom;
     
-    float dz = getElevation(boundary.x, boundary.y) - cameraZ;  // Assuming terrain is at z=0
+    float dz = getElevation(boundary.x, boundary.y) - cameraZ; 
 
     float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
@@ -233,9 +232,6 @@ void QuadtreeTile::onSplit(QuadTree<TileMetadata>* parent) {
 }
 
 
-// #include <cmath>      // for std::fabs
-// #include <algorithm>  // for std::sort and std::unique
-
 void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
     TileMetadata* parentMeta = node->getType();
     parentMeta->dirtyVertices.clear();
@@ -258,7 +254,6 @@ void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
     mergeChildDirtyVertices(node->getSouthwestNonConst());
 
     // Deduplicate the merged dirty vertices.
-    // Assumes that 'vec3' has members .x, .y, and .z.
     std::vector<vec3>& dv = parentMeta->dirtyVertices;
     std::sort(dv.begin(), dv.end(), [](const vec3& a, const vec3& b) {
         if (a.x != b.x) return a.x < b.x;
@@ -279,21 +274,17 @@ void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
 
 
 void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
-    // Remove the mesh associated with this node (its children are being unloaded).
     auto it = bucketMeshes.find(node);
     if (it != bucketMeshes.end()) {
         bucketMeshes.erase(it);
     }
-
 }
 
 
 void QuadtreeTile::deformVertex(float x, float y, float dz)
 {
-    // Locate the leaf node covering (x,y).
     QuadTree<TileMetadata>* leaf = findLeafNode(tree, x, y);
     if (!leaf) {
-        // (x,y) is outside the terrain bounds.
         return;
     }
     
@@ -332,7 +323,6 @@ float QuadtreeTile::computeBaseElevation(float x, float y) {
         // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
         double originX = gt[0];
         double pixelWidth = gt[1];
-        // For consistency with your original code:
         double originY = 0.0;
         double pixelHeight = gt[5];
         

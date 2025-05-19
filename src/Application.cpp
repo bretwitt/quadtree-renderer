@@ -7,21 +7,19 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// Heightfield parameters
 const int DEFAULT_GRID_SIZE = 100;
 const float DEFAULT_GRID_SCALE = 1.5f;
 const float DEFAULT_HEIGHT_SCALE = 10.0f;
 
-// Constructor
+
 Application::Application(int width, int height, const char* title)
     : SCR_WIDTH(width), SCR_HEIGHT(height), windowTitle(title), window(nullptr),
       shader(nullptr), heightfield(nullptr), 
-      camera(glm::vec3(-50.0f, -50.0f, -1686.0f)), // Initial camera position
+      camera(glm::vec3(-50.0f, -50.0f, -1686.0f)), 
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
       qt_world(16, 10, 1200.0f,120.0f),
-      renderer(nullptr),
       bucket_renderer(nullptr), 
       terrainShader(nullptr),      
       terrainShaderActive(false),
@@ -44,7 +42,6 @@ Application::~Application()
     // Cleanup application resources
     delete shader;
     delete heightfield;
-    delete renderer;
     delete bucket_renderer;
     delete terrainShader;
     glfwTerminate();
@@ -59,12 +56,11 @@ bool Application::init()
         return false;
     }
 
-    // Set GLFW window hints for OpenGL version (3.3 Core)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // For MacOS
+
     #ifdef __APPLE__
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     #endif
@@ -86,45 +82,38 @@ bool Application::init()
         return false;
     }
 
-    // Set viewport
-    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    #ifdef __APPLE__
+        // On macOS Retina, window size (points) ≠ framebuffer size (pixels)
+        int fbW, fbH;
+        glfwGetFramebufferSize(window, &fbW, &fbH);
+        glViewport(0, 0, fbW, fbH);
+    #else    
+        // On other platforms points == pixels
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    #endif
 
-    // Set user pointer to this instance for callbacks
     glfwSetWindowUserPointer(window, this);
-
-    // Set callbacks
     setCallbacks();
-
-    // Capture the mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    // Enable depth testing
     glEnable(GL_DEPTH_TEST);
 
     // Initialize Shader
     shader = new Shader("../shaders/vertex_shader.glsl", "../shaders/fragment_shader.glsl");
     terrainShader = new Shader("../shaders/terrain_vertex_shader.glsl", "../shaders/terrain_fragment_shader.glsl");
 
-    // Initialize Heightfield (if needed)
     // heightfield = new Heightfield(DEFAULT_GRID_SIZE, DEFAULT_GRID_SCALE, DEFAULT_HEIGHT_SCALE);
 
     // Initialize renderers
-    renderer = new QuadtreeRenderer();
     bucket_renderer = new BucketMeshRenderer();
 
     // ---------------------------
     // Initialize Dear ImGui
     // ---------------------------
-    // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    // Optionally, access ImGuiIO for configuration
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    // Setup Platform/Renderer backends
-    // Use "#version 330" for OpenGL 3.3 Core
     const char* glsl_version = "#version 330";
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true))
     {
@@ -151,12 +140,10 @@ void Application::run()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Update the quadtree with the current camera position (or any other needed update)
         qt_world.update(camera.Position.x, camera.Position.y, camera.Position.z);
 
         processInput();
 
-        // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -189,7 +176,6 @@ void Application::run()
             // ------------------------------------------------------
             // Graph: Memory usage history (in MB)
             // ------------------------------------------------------
-            // Keep a rolling history for plotting (for example, last 120 frames)
             static const int historySize = 120;
             static float memUsageHistory[historySize] = { 0 };
             static int memHistoryIdx = 0;
@@ -241,7 +227,6 @@ void Application::run()
             currentShader->setVec3("viewPos", camera.Position);
         }
 
-        // Update matrices for shader
         glm::mat4 model = glm::mat4(1.0f);
         currentShader->setMat4("model", model);
 
@@ -256,10 +241,10 @@ void Application::run()
         );
         currentShader->setMat4("projection", projection);
 
-        // Render your scene and custom renderers
+
         // renderer->update(qt_world.getTree(), shader->ID);
         bucket_renderer->render(&qt_world, currentShader->ID, camera.Position);
-        renderer->draw();
+        //renderer->draw();
 
         // Render the ImGui frame
         ImGui::Render();
@@ -290,26 +275,25 @@ void Application::processInput()
     if(glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(UP, deltaTime);
 
-    // Wireframe toggle with the F key
+
     if(glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
     {
         if(!wireframeKeyPressed)
         {
-            wireframe = !wireframe; // Toggle the wireframe state
+            wireframe = !wireframe; 
             if(wireframe)
             {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // Enable wireframe
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); 
                 std::cout << "Wireframe mode enabled.\n";
             }
             else
             {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // Enable filled mode
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); 
                 std::cout << "Wireframe mode disabled.\n";
             }
-            wireframeKeyPressed = true; // Mark the key as pressed
+            wireframeKeyPressed = true;
         }
     }
-    // Reset the key press state when the key is released
     if(glfwGetKey(window, GLFW_KEY_F) == GLFW_RELEASE)
     {
         wireframeKeyPressed = false;
@@ -318,7 +302,7 @@ void Application::processInput()
     {
         if(!terrainShaderKeyPressed)
         {
-            terrainShaderActive = !terrainShaderActive; // Toggle terrain shader
+            terrainShaderActive = !terrainShaderActive; 
             if(terrainShaderActive)
             {
                 std::cout << "Terrain shader enabled.\n";
@@ -327,14 +311,15 @@ void Application::processInput()
             {
                 std::cout << "Terrain shader disabled. Reverting to default shader.\n";
             }
-            terrainShaderKeyPressed = true; // Mark the key as pressed
+            terrainShaderKeyPressed = true;
         }
     }
     if(glfwGetKey(window, GLFW_KEY_T) == GLFW_RELEASE)
     {
         terrainShaderKeyPressed = false;
     }
-    // If the left mouse button is pressed, apply deformation at the center of the screen.
+
+    // Deformation
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
     {
         // Compute the screen center in window coordinates.
@@ -358,7 +343,6 @@ void Application::processInput()
         glm::vec3 farPoint  = glm::unProject(glm::vec3(screenCenterX, SCR_HEIGHT / 2.0f, 1.0f),
                                             view * model, projection, viewport);
         
-        // Compute the ray direction.
         glm::vec3 rayDir = glm::normalize(farPoint - nearPoint);
 
         float t = 0.0f;
@@ -407,7 +391,6 @@ void Application::processInput()
             t += tStep;
         }
 
-        // Apply deformation if an intersection was found.
         if (intersectFound)
         {
             // Define brush parameters.
@@ -423,7 +406,6 @@ void Application::processInput()
                     float deformX = intersectPoint.x + offsetX;
                     float deformY = intersectPoint.y + offsetY;
 
-                    // Apply the deformation to the world.
                     qt_world.deformVertex(deformX, deformY, dz);
                     
                 }
@@ -435,8 +417,13 @@ void Application::processInput()
 
 void Application::framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height)
 {
-    // Adjust the viewport when the window size changes
+#ifdef __APPLE__
+    int fbW, fbH;
+    glfwGetFramebufferSize(window, &fbW, &fbH);
+    glViewport(0, 0, fbW, fbH);
+#else
     glViewport(0, 0, width, height);
+#endif
 }
 
 void Application::mouse_callback(double xpos, double ypos)

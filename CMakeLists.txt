@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.6)
 project(HeightfieldRenderer)
 
 # Set the C++ standard
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD     17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
+set(CMAKE_CXX_EXTENSIONS    OFF)
 
 # Specify the sources
 set(SOURCES
@@ -12,9 +12,7 @@ set(SOURCES
     src/Application.cpp
     src/Shader.cpp
     src/Heightfield.cpp
-    src/Camera.cpp
     src/GeoTIFFLoader.cpp
-    src/QuadtreeRenderer.cpp
     src/QuadtreeTile.cpp
     src/QuadtreeWorld.cpp
     src/TextureLoader.cpp
@@ -25,19 +23,26 @@ include_directories(
     include
     thirdparty/stb 
 )
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends)
 
 file(GLOB IMGUI_SOURCES 
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_glfw.h
+    #${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_glfw.h
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_glfw.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3.h
+    #${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3.h
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends/imgui_impl_opengl3_loader.cpp
 )
 
-add_library("ImGui" STATIC ${IMGUI_SOURCES})
+add_library(ImGui STATIC ${IMGUI_SOURCES})
+set_target_properties(ImGui PROPERTIES
+    LINKER_LANGUAGE CXX
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+target_include_directories(ImGui PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui/backends
+)
 
 # Add executable
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -65,18 +70,21 @@ if (OPENGL_FOUND)
 else()
     message(ERROR " OPENGL not found!")
 endif()
-
+find_package(glfw3 3.3 REQUIRED CONFIG)
 # Find GLFW
 # It's recommended to use the package provided by GLFW if installed system-wide
-find_package(PkgConfig REQUIRED)
-pkg_search_module(GLFW REQUIRED glfw3)
-
-if (GLFW_FOUND)
-    include_directories(${GLFW_INCLUDE_DIRS})
-    target_link_libraries(${PROJECT_NAME} ${GLFW_LIBRARIES})
-else()
-    message(ERROR " GLFW not found via pkg-config!")
-endif()
+#find_package(PkgConfig REQUIRED)
+#pkg_search_module(GLFW REQUIRED glfw3)
+#
+#if (GLFW_FOUND)
+#    include_directories(${GLFW_INCLUDE_DIRS})
+#    target_link_libraries(${PROJECT_NAME} ${GLFW_LIBRARIES})
+#    link_directories(${GLFW_LIBRARY_DIRS})
+#    message(STATUS "Found GLFW")
+#    message(STATUS "GLFW libraries: ${GLFW_LIBRARIES}")
+#else()
+#    message(ERROR " GLFW not found via pkg-config!")
+#endif()
 
 # Find GLAD
 # If GLAD is included as part of your project, you can add it as a subdirectory
@@ -86,10 +94,10 @@ endif()
 # Add GLAD
 add_library(glad src/glad.c)  # Adjust the path if necessary
 target_include_directories(glad PUBLIC include)  # Adjust include path if necessary
-target_link_libraries(${PROJECT_NAME} glad ImGui ${GDAL_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} glad glfw ImGui ${GDAL_LIBRARIES})
 
 # Link other necessary libraries
-if(UNIX)
+if(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} dl pthread X11)
 endif()
 
