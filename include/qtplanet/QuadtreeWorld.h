@@ -33,7 +33,7 @@ namespace std {
 
 // Forward declarations for types used in getAllMeshes().
 // Make sure these types (QuadTree and Mesh) are defined elsewhere.
-template <typename T>
+template <typename T, typename CoordSystem>
 class QuadTree; 
 
 class Mesh;

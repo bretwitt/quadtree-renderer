@@ -23,7 +23,6 @@ struct Mesh {
 };
 
 struct vec3 {
-
     vec3(float x, float y, float z) {
         this->x = x;
         this->y = y;
@@ -55,7 +54,7 @@ public:
      * If geoLoader is provided, the elevation values will be taken from the GeoTIFF.
      * Otherwise, Perlin noise is used as a fallback.
      */
-    QuadtreeTile(float x, float y, float width, float height, GeoTIFFLoader* geoLoader = nullptr);
+    QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader = nullptr);
     
     // Destructor: cleans up the allocated QuadTree.
     ~QuadtreeTile();
@@ -66,7 +65,7 @@ public:
     void tick();
     void tickLeaves(QuadTree<TileMetadata>* node);
 
-    void deformVertex(float x, float y, float dz);
+    void deformVertex(Cartesian::Position pos, float dz);
 
     QuadTree<TileMetadata>* getTree() const;
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
@@ -79,8 +78,9 @@ public:
      * coordinates using the geotransform and returns the elevation from the raster data.
      * Otherwise, it falls back to generating elevation using Perlin noise.
      */
-    float getElevation(float x, float y);
-    float computeBaseElevation(float x, float y);
+    float getElevation(Cartesian::Position pos);
+    float computeBaseElevation(Cartesian::Position pos);
+    void deduplicateVertices(std::vector<vec3>& vertices);
 
     //std::unordered_set<QuadTree<TileMetadata>*> getDirtyTiles() { return dirtyTiles; }
 
@@ -102,7 +102,7 @@ private:
     void updateMesh(QuadTree<TileMetadata>* node);
 
 
-    QuadTree<TileMetadata>* findLeafNode(QuadTree<TileMetadata>* node, float x, float y);
+    QuadTree<TileMetadata>* findLeafNode(QuadTree<TileMetadata>* node, Cartesian::Position pos);
 
     /**
      * Generates a triangular mesh for the tile.
@@ -110,7 +110,7 @@ private:
      * The elevation for each vertex is computed using either the GeoTIFF data
      * (if available) or Perlin noise.
      */
-    Mesh generateTriangularMesh(float centerX, float centerY, float halfWidth, float halfHeight, int level);
+    Mesh generateTriangularMesh(Cartesian::Boundary bounds, int level);
 
     // Cross product helper.
     static inline void cross(const float* a, const float* b, float* result);

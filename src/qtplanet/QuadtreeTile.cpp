@@ -2,14 +2,15 @@
 #include <cmath>
 #include <cstdlib>
 #include <algorithm> 
+#include "qtplanet/CoordinateSystems.h"
 
 // ------------------------------
 // Constructor & Destructor
 // ------------------------------
-QuadtreeTile::QuadtreeTile(float x, float y, float width, float height, GeoTIFFLoader* geoLoader)
+QuadtreeTile::QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader)
     : geoTIFFLoader(geoLoader)
 {
-    tree = new QuadTree<TileMetadata>(x, y, width, height);
+    tree = new QuadTree<TileMetadata>(b);
     
     // Set up callbacks.
     tree->nodeInitCallback = [this](QuadTree<TileMetadata>* node) {
@@ -104,7 +105,7 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
                                 int& subdivisions)
 {
     // Retrieve the node's boundary.
-    QuadTree<TileMetadata>::QuadBoundary boundary = node->getBoundary();
+    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
 
     float left   = boundary.x - boundary.width;
     float right  = boundary.x + boundary.width;
@@ -112,21 +113,27 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
     float bottom = boundary.y + boundary.height;
 
     // Compute horizontal (dx) and vertical (dy) distances from the camera to the boundary.
-    float dx = 0.0f;
-    if (cameraX < left)
-        dx = left - cameraX;
-    else if (cameraX > right)
-        dx = cameraX - right;
+    //float dx = 0.0f;
+    //if (cameraX < left)
+    //    dx = left - cameraX;
+    //else if (cameraX > right)
+    //    dx = cameraX - right;
 
-    float dy = 0.0f;
-    if (cameraY < top)
-        dy = top - cameraY;
-    else if (cameraY > bottom)
-        dy = cameraY - bottom;
+    //float dy = 0.0f;
+    //if (cameraY < top)
+    //    dy = top - cameraY;
+    //else if (cameraY > bottom)
+    //    dy = cameraY - bottom;
     
-    float dz = getElevation(boundary.x, boundary.y) - cameraZ; 
+    //float dz = getElevation(boundary.x, boundary.y) - cameraZ; 
 
-    float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+    //float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+    float distance = CoordinateTraits<Cartesian>::distanceTo
+            (
+                boundary, cameraX, cameraY, cameraZ, 
+                getElevation( {boundary.x,boundary.y })
+            );
 
     int level = node->getLevel();
 
@@ -201,44 +208,49 @@ void QuadtreeTile::onSplit(QuadTree<TileMetadata>* parent) {
             if (!child) return;
             TileMetadata* childMeta = child->getType();
             childMeta->dirtyVertices.clear();
-            QuadTree<TileMetadata>::QuadBoundary bounds = child->getBoundary();
-            float left   = bounds.x - bounds.width;
-            float right  = bounds.x + bounds.width;
-            float top    = bounds.y - bounds.height;
-            float bottom = bounds.y + bounds.height;
-            
-            // Use a half-open interval: [left, right) and [top, bottom)
-            for (const auto& dp : parentMeta->dirtyVertices) {
-                if (dp.x >= left && dp.x < right &&
-                    dp.y >= top  && dp.y < bottom) {
-                    childMeta->dirtyVertices.push_back(dp);
-                }
+            for(const auto& dp : parentMeta->dirtyVertices) {
+                 if(CoordinateTraits<Cartesian>::contains(child->getBoundary(), dp.x,dp.y)) {
+                     childMeta->dirtyVertices.push_back(dp);
+                 }
             }
         };
 
-        // Transfer for each of the parent's four children.
         transferToChild(parent->getNortheastNonConst());
         transferToChild(parent->getNorthwestNonConst());
         transferToChild(parent->getSoutheastNonConst());
         transferToChild(parent->getSouthwestNonConst());
 
-        // Mark that we've transferred the parent's dirty vertices.
         parentMeta->dirtyVerticesTransferred = true;
-        // Clear parent's dirty vertices so they won't be transferred again.
         parentMeta->dirtyVertices.clear();
     }
  
-    parent->getType()->ticksSinceSplit = 0; // Reset split timer.
+    parent->getType()->ticksSinceSplit = 0; 
 }
 
+void QuadtreeTile::deduplicateVertices(std::vector<vec3>& vertices) {
+    std::sort(vertices.begin(), vertices.end(), [](const vec3& a, const vec3& b) {
+        if (a.x != b.x) return a.x < b.x;
+        if (a.y != b.y) return a.y < b.y;
+        return a.z < b.z;
+    });
+
+    vertices.erase(std::unique(vertices.begin(), vertices.end(), [](const vec3& a, const vec3& b) {
+        const float epsilon = 1e-6f;
+        return (std::fabs(a.x - b.x) < epsilon &&
+                std::fabs(a.y - b.y) < epsilon &&
+                std::fabs(a.z - b.z) < epsilon);
+    }), vertices.end());
+}
 
 void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
+    if (!node) return;
+
     TileMetadata* parentMeta = node->getType();
     parentMeta->dirtyVertices.clear();
 
-    // Merge each child's dirty vertices into the parent's list.
-    auto mergeChildDirtyVertices = [parentMeta](QuadTree<TileMetadata>* child) {
-        if (!child) return;
+    for (auto* child : { node->getNortheastNonConst(), node->getNorthwestNonConst(),
+                         node->getSoutheastNonConst(), node->getSouthwestNonConst() }) {
+        if (!child) continue;
         TileMetadata* childMeta = child->getType();
         parentMeta->dirtyVertices.insert(
             parentMeta->dirtyVertices.end(),
@@ -246,32 +258,11 @@ void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
             childMeta->dirtyVertices.end()
         );
         childMeta->dirtyVertices.clear();
-    };
+    }
 
-    mergeChildDirtyVertices(node->getNortheastNonConst());
-    mergeChildDirtyVertices(node->getNorthwestNonConst());
-    mergeChildDirtyVertices(node->getSoutheastNonConst());
-    mergeChildDirtyVertices(node->getSouthwestNonConst());
-
-    // Deduplicate the merged dirty vertices.
-    std::vector<vec3>& dv = parentMeta->dirtyVertices;
-    std::sort(dv.begin(), dv.end(), [](const vec3& a, const vec3& b) {
-        if (a.x != b.x) return a.x < b.x;
-        if (a.y != b.y) return a.y < b.y;
-        return a.z < b.z;
-    });
-    dv.erase(std::unique(dv.begin(), dv.end(), [](const vec3& a, const vec3& b) {
-        // Consider two vertices the same if they are nearly equal.
-        const float epsilon = 1e-6f;
-        return (std::fabs(a.x - b.x) < epsilon &&
-                std::fabs(a.y - b.y) < epsilon &&
-                std::fabs(a.z - b.z) < epsilon);
-    }), dv.end());
-
-    // Reset the merge tick counter.
-    node->getType()->ticksSinceMerge = 0;
+    deduplicateVertices(parentMeta->dirtyVertices);
+    parentMeta->ticksSinceMerge = 0;
 }
-
 
 void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
     auto it = bucketMeshes.find(node);
@@ -281,9 +272,9 @@ void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
 }
 
 
-void QuadtreeTile::deformVertex(float x, float y, float dz)
+void QuadtreeTile::deformVertex(Cartesian::Position pos, float dz)
 {
-    QuadTree<TileMetadata>* leaf = findLeafNode(tree, x, y);
+    QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
     if (!leaf) {
         return;
     }
@@ -297,10 +288,8 @@ void QuadtreeTile::deformVertex(float x, float y, float dz)
     const float baseThreshold = 0.05f; // adjust this base value as needed
     bool updated = false;
     for (auto& dp : metadata->dirtyVertices) {
-        float dx = dp.x - x;
-        float dy = dp.y - y;
-        
-        if (std::sqrt(dx * dx + dy * dy) < baseThreshold) {
+        float dist = CoordinateTraits<Cartesian>::distance({dp.x,dp.y}, pos);
+        if (dist < baseThreshold) {
             dp.z += dz;
             updated = true;
             break;
@@ -309,14 +298,14 @@ void QuadtreeTile::deformVertex(float x, float y, float dz)
     
     if (!updated) {
         // No existing dirty point is nearby, so add a new one.
-        vec3 newPoint{x,y,computeBaseElevation(x,y)+dz};
+        vec3 newPoint{pos.x,pos.y,computeBaseElevation(pos)+dz};
         metadata->dirtyVertices.push_back(newPoint);
     }
 
     updateMesh(leaf);   
 }
 
-float QuadtreeTile::computeBaseElevation(float x, float y) {
+float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
     if (geoTIFFLoader) {
         const std::vector<double>& gt = geoTIFFLoader->getGeoTransform();
         // Assuming the geotransform is of the form:
@@ -326,8 +315,8 @@ float QuadtreeTile::computeBaseElevation(float x, float y) {
         double originY = 0.0;
         double pixelHeight = gt[5];
         
-        double col_f = (x - originX) / pixelWidth;
-        double row_f = (y - originY) / pixelHeight;
+        double col_f = (pos.x - originX) / pixelWidth;
+        double row_f = (pos.y - originY) / pixelHeight;
         int col0 = static_cast<int>(std::floor(col_f));
         int row0 = static_cast<int>(std::floor(row_f));
         int col1 = col0 + 1;
@@ -357,21 +346,21 @@ float QuadtreeTile::computeBaseElevation(float x, float y) {
         float alpha = 0.7f;
         float frequency = 0.1f;
         float amplitude = 0.25f;
-        float upscalePerlin = Perlin::noise(x * frequency, y * frequency) * amplitude;
+        float upscalePerlin = Perlin::noise(pos.x * frequency, pos.y * frequency) * amplitude;
         
         return interpolatedValue + (alpha * upscalePerlin);
     } else {
         float frequency = 0.1f;
         float amplitude = 1.0f;
-        return Perlin::noise(x * frequency, y * frequency) * amplitude;
+        return Perlin::noise(pos.x * frequency, pos.y * frequency) * amplitude;
     }
 }
 
 
-float QuadtreeTile::getElevation(float x, float y) {
-    float baseElevation = computeBaseElevation(x, y);
+float QuadtreeTile::getElevation(Cartesian::Position pos) {
+    float baseElevation = computeBaseElevation(pos);
 
-    QuadTree<TileMetadata>* leafNode = findLeafNode(tree, x, y);
+    QuadTree<TileMetadata>* leafNode = findLeafNode(tree, pos);
     if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
 
     const TileMetadata* metadata = leafNode->getType();
@@ -382,8 +371,8 @@ float QuadtreeTile::getElevation(float x, float y) {
     const float influenceRadius = 1e-1f;
 
     for (const auto& dp : metadata->dirtyVertices) {
-        float dx = x - dp.x;
-        float dy = y - dp.y;
+        float dx = pos.x - dp.x;
+        float dy = pos.y - dp.y;
         float distance = std::sqrt(dx * dx + dy * dy);  
 
         if(distance < influenceRadius) {
@@ -397,19 +386,19 @@ float QuadtreeTile::getElevation(float x, float y) {
 }
 
 
-QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node, float x, float y) {
+QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node, Cartesian::Position pos) {
     if (!node)
         return nullptr;
 
     // Get the node’s boundary.
-    QuadTree<TileMetadata>::QuadBoundary boundary = node->getBoundary();
+    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
     float left   = boundary.x - boundary.width;
     float right  = boundary.x + boundary.width;
     float top    = boundary.y - boundary.height;
     float bottom = boundary.y + boundary.height;
 
     // If (x,y) lies outside this node, return nullptr.
-    if (x < left || x > right || y < top || y > bottom)
+    if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
         return nullptr;
 
     // If not divided, this is the leaf.
@@ -417,38 +406,36 @@ QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node,
         return node;
 
     // Otherwise, search the children.
-    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), x, y);
+    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), pos);
     if (found) return found;
-    found = findLeafNode(node->getNorthwestNonConst(), x, y);
+    found = findLeafNode(node->getNorthwestNonConst(), pos);
     if (found) return found;
-    found = findLeafNode(node->getSoutheastNonConst(), x, y);
+    found = findLeafNode(node->getSoutheastNonConst(), pos);
     if (found) return found;
-    return findLeafNode(node->getSouthwestNonConst(), x, y);
+    return findLeafNode(node->getSouthwestNonConst(), pos);
 }
 
 void QuadtreeTile::updateMesh(QuadTree<TileMetadata>* node) {
     int level = node->getLevel();
-    QuadTree<TileMetadata>::QuadBoundary childBounds = node->getBoundary();
+    QuadTree<TileMetadata>::Boundary childBounds = node->getBoundary();
 
     // Generate the mesh for the child.
-    Mesh mesh = generateTriangularMesh(childBounds.x, childBounds.y, childBounds.width, childBounds.height, level);
+    Mesh mesh = generateTriangularMesh({childBounds.x, childBounds.y, childBounds.width, childBounds.height}, level);
     bucketMeshes[node] = mesh;
 }
 
-Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
-                                            float halfWidth, float halfHeight,
-                                            int level)
+Mesh QuadtreeTile::generateTriangularMesh(Cartesian::Boundary bounds, int level)
 {
     Mesh mesh;
 
     int divisions = 1 << (level + 1); // 2^(level + 1)
     int numVerticesPerSide = divisions + 1;
 
-    float stepX = (2.0f * halfWidth) / divisions;
-    float stepY = (2.0f * halfHeight) / divisions;
+    float stepX = (2.0f * bounds.width) / divisions;
+    float stepY = (2.0f * bounds.height) / divisions;
 
-    float startX = centerX - halfWidth;
-    float startY = centerY - halfHeight;
+    float startX = bounds.x - bounds.width;
+    float startY = bounds.y - bounds.height;
 
     // -------------------------------------------------------
     // 1) Generate the fine mesh vertices and texture coordinates.
@@ -459,7 +446,7 @@ Mesh QuadtreeTile::generateTriangularMesh(float centerX, float centerY,
         {
             float x = startX + i * stepX;
             float y = startY + j * stepY;
-            float z = getElevation(x, y);
+            float z = getElevation( {x, y} );
 
             // Push back position (x, y, z)
             mesh.vertices.push_back(x);

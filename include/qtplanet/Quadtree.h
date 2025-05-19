@@ -6,11 +6,12 @@
 #include <functional>
 #include <vector>
 #include <stack>
+#include "CoordinateSystems.h"
 
 using std::cout;
 using std::endl;
 
-template<typename T>
+template<typename T, typename CoordSystem = Cartesian>
 class QuadTree {
 public:
     using NodeInitCallback = std::function<void(QuadTree<T>*)>;
@@ -22,14 +23,17 @@ public:
     NodeDestroyCallback nodeDestroyCallback;
     NodeSplitCallback nodeSplitCallback;
     NodeMergeCallback nodeMergeCallback;
-    
-    QuadTree(float x, float y, float width, float height, T type = T{}, int level = 0, 
+   
+    using Boundary = typename CoordSystem::Boundary;
+    using Traits = CoordinateTraits<CoordSystem>;
+
+    QuadTree(Boundary boundary, T type = T{}, int level = 0, 
              NodeInitCallback nodeInitCallback = nullptr,
              NodeDestroyCallback nodeDestroyCallback = nullptr, 
              NodeSplitCallback nodeSplitCallback = nullptr,
              NodeMergeCallback nodeMergeCallback = nullptr,
              QuadTree<T>* parent = nullptr)
-        : boundary{ x, y, width, height },
+        : boundary{ boundary },
           type(type),
           divided(false),
           level(level),
@@ -60,13 +64,8 @@ public:
         delete southwest;
     }
 
-    struct QuadBoundary {
-        float x, y;
-        float width;
-        float height;
-    };
 
-    QuadBoundary getBoundary() const { return boundary; }
+    Boundary getBoundary() const { return boundary; }
     bool isDivided() const { return divided; }
 
     T* getType() { return &type; }
@@ -95,17 +94,16 @@ public:
 
     void subdivide() {
         if (divided) return;
-        
-        float x = boundary.x;
-        float y = boundary.y;
-        float w = boundary.width / 2.0f;
-        float h = boundary.height / 2.0f;
 
         int childLevel = level + 1;
-        northeast = new QuadTree(x + w, y - h, w, h, type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        northwest = new QuadTree(x - w, y - h, w, h, type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southeast = new QuadTree(x + w, y + h, w, h, type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southwest = new QuadTree(x - w, y + h, w, h, type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);        
+
+        auto childBounds = Traits::getChildBounds(boundary);
+
+        northeast = new QuadTree(childBounds.bounds[0], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        northwest = new QuadTree(childBounds.bounds[1], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southeast = new QuadTree(childBounds.bounds[2], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southwest = new QuadTree(childBounds.bounds[3], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+
         divided = true;
 
         clearCache(); // Invalidate cache on structure change
@@ -186,7 +184,7 @@ public:
     QuadTree* getSouthwest() const { return southwest; }
 
 private:
-    QuadBoundary boundary;
+    Boundary boundary;
     T type;
     bool divided = false;
     int level;

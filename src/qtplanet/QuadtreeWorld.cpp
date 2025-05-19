@@ -69,7 +69,7 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
                 float centerPosX = tileX * tileSize + tileSize * 0.5f;
                 float centerPosY = tileY * tileSize + tileSize * 0.5f;
                 float halfSize = tileSize * 0.5f;
-                tiles[key] = new QuadtreeTile(centerPosX, centerPosY, halfSize, halfSize, &loader);
+                tiles[key] = new QuadtreeTile({centerPosX, centerPosY, halfSize, halfSize}, &loader);
             }
         }
     }
@@ -143,7 +143,7 @@ void QuadtreeWorld::deformVertex(float x, float y, float dz) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
 
-        it->second->deformVertex(x, y, dz);
+        it->second->deformVertex({x, y}, dz);
         // auto _it = std::find(dirtyTiles.begin(),dirtyTiles.end(), it->second);
         // dirtyTiles.insert(it->second);
 
@@ -164,7 +164,7 @@ float QuadtreeWorld::getElevation(float x, float y) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
         // Forward the deformation to the tile.
-        return it->second->getElevation(x,y);
+        return it->second->getElevation({x,y});
         
     } else {
         return -1;
