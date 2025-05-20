@@ -1,5 +1,6 @@
 #include "qtplanet/QuadtreeWorld.h"
 #include <algorithm>
+#include <cmath> // For std::fabs and std::ceil
 
 //---------------------------------------------------------------------
 // Constructor
@@ -29,13 +30,12 @@ QuadtreeWorld::~QuadtreeWorld() {
 // if needed, removes tiles that are out of view, and updates the LOD
 // for each active tile.
 //---------------------------------------------------------------------
-#include <cmath> // For std::fabs and std::ceil
 
 void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
     // *** Update view range based on the camera's height ***
     // Define a base height that corresponds to the initial view range.
     // The absolute value of cameraZ is used so that negative heights are handled correctly.
-    const float baseHeight = -1686.0f; // Adjust this as needed.
+    const float baseHeight = -0.0f; // Adjust this as needed.
     
     // Optional: clamp the view range to sensible minimum and maximum values.
     const int minViewRange = 10;
@@ -69,7 +69,7 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
                 float centerPosX = tileX * tileSize + tileSize * 0.5f;
                 float centerPosY = tileY * tileSize + tileSize * 0.5f;
                 float halfSize = tileSize * 0.5f;
-                tiles[key] = new QuadtreeTile({centerPosX, centerPosY, halfSize, halfSize}, &loader);
+                tiles[key] = new QuadtreeTile<Cartesian>({centerPosX, centerPosY, halfSize, halfSize}, &loader);
             }
         }
     }
@@ -143,7 +143,7 @@ void QuadtreeWorld::deformVertex(float x, float y, float dz) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
 
-        it->second->deformVertex<Cartesian>(Cartesian::Position {x,y}, dz);
+        it->second->deformVertex(Cartesian::Position {x,y}, dz);
         // auto _it = std::find(dirtyTiles.begin(),dirtyTiles.end(), it->second);
         // dirtyTiles.insert(it->second);
 
@@ -164,7 +164,7 @@ float QuadtreeWorld::getElevation(float x, float y) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
         // Forward the deformation to the tile.
-        return it->second->getElevation<Cartesian>({x,y});
+        return it->second->getElevation({x,y});
         
     } else {
         return -1;

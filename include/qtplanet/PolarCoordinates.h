@@ -1,5 +1,5 @@
-#ifndef QTPLANET_CARTESIANCOORDINATES_H
-#define QTPLANET_CARTESIANCOORDINATES_H
+#ifndef QTPLANET_POLARCOORDINATES_H
+#define QTPLANET_POLARCOORDINATES_H
 
 #include "CoordinateSystems.h"
 #include <array>
@@ -10,4 +10,4 @@ struct CoordinateTraits<Polar> {
     static std::pair<float,float> cartesianAt(const Polar::Boundary&, int i, int j, int divisions);
 };
 
-#endif // QTPLANET_CARTESIANCOORDINATES_H
+#endif // QTPLANET_POLARCOORDINATES_H

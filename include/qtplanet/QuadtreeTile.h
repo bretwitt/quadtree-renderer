@@ -1,178 +1,156 @@
-    #ifndef QUADTREE_TILE_H
-    #define QUADTREE_TILE_H
+#ifndef QUADTREE_TILE_H
+#define QUADTREE_TILE_H
 
-    #include "Quadtree.h"
-    #include <cmath>      // For std::sqrt, std::floor
-    #include <unordered_map>
-    #include <vector>
-    #include <iostream>
-    #include "Perlin.h"
-    #include "GeoTIFFLoader.h"  // Include the GeoTIFF loader
-    #include <unordered_set>
+#include "Quadtree.h"
+#include <cmath>      // For std::sqrt, std::floor
+#include <unordered_map>
+#include <vector>
+#include <iostream>
+#include "Perlin.h"
+#include "GeoTIFFLoader.h"  // Include the GeoTIFF loader
+#include <unordered_set>
+#include "TileMetadata.h"  // Include the TileMetadata definition
 
-    //----------------------------------------------------------
-    // Mesh structure and QuadtreeTile declaration
-    //----------------------------------------------------------
+//----------------------------------------------------------
+// Mesh structure and QuadtreeTile declaration
+//----------------------------------------------------------
 
-    struct Mesh {
-        std::vector<float> vertices;  // position data, 3 floats per vertex
-        std::vector<float> normals;   // normal data, 3 floats per vertex
-        std::vector<float> texCoords; // texture coords, 2 floats per vertex
-        std::vector<float> coarseNormals; // texture coords, 2 floats per vertex
-        std::vector<unsigned int> indices;
-    };
+struct Mesh {
+    std::vector<float> vertices;  // position data, 3 floats per vertex
+    std::vector<float> normals;   // normal data, 3 floats per vertex
+    std::vector<float> texCoords; // texture coords, 2 floats per vertex
+    std::vector<float> coarseNormals; // texture coords, 2 floats per vertex
+    std::vector<unsigned int> indices;
+};
 
-    struct vec3 {
-        vec3(float x, float y, float z) {
-            this->x = x;
-            this->y = y;
-            this->z = z;
+template<typename CoordSystem>
+class QuadtreeTile {
+public:
+    /**
+    * Constructor.
+    *
+    * @param x Center x coordinate of the tile.
+    * @param y Center y coordinate of the tile.
+    * @param width Half-width of the tile.
+    * @param height Half-height of the tile.
+    * @param geoLoader Optional pointer to a GeoTIFFLoader.
+    *
+    * If geoLoader is provided, the elevation values will be taken from the GeoTIFF.
+    * Otherwise, Perlin noise is used as a fallback.
+    */
+    using Boundary = typename CoordSystem::Boundary;
+    QuadtreeTile(Boundary b, GeoTIFFLoader* geoLoader = nullptr);
+    
+    // Destructor: cleans up the allocated QuadTree.
+    ~QuadtreeTile();
+
+    void updateLOD(float cameraX, float cameraY, float cameraZ,
+                float splitThreshold, float mergeThreshold, int& subdivisions);
+
+    void tick();
+    void tickLeaves(QuadTree<TileMetadata>* node);
+
+    void deformVertex(typename CoordSystem::Position pos, float dz)
+    {
+        QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
+        if (!leaf) {
+            return;
         }
-        float x = 0;
-        float y = 0;
-        float z = 0;
-    };
-
-    struct TileMetadata {
-        int ticksSinceSplit = 0; // -1 if expired/never happened
-        int ticksSinceMerge = 0; // -1 if expired/never happened
-        std::vector<vec3> dirtyVertices; // Deformations at highest LOD level
-        bool dirtyVerticesTransferred = false;
-    };
-
-    class QuadtreeTile {
-    public:
-        /**
-        * Constructor.
-        *
-        * @param x Center x coordinate of the tile.
-        * @param y Center y coordinate of the tile.
-        * @param width Half-width of the tile.
-        * @param height Half-height of the tile.
-        * @param geoLoader Optional pointer to a GeoTIFFLoader.
-        *
-        * If geoLoader is provided, the elevation values will be taken from the GeoTIFF.
-        * Otherwise, Perlin noise is used as a fallback.
-        */
-        QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader = nullptr);
         
-        // Destructor: cleans up the allocated QuadTree.
-        ~QuadtreeTile();
-
-
-        void updateLOD(float cameraX, float cameraY, float cameraZ,
-                    float splitThreshold, float mergeThreshold, int& subdivisions);
-
-        void tick();
-        void tickLeaves(QuadTree<TileMetadata>* node);
-
-        template<typename CoordSystem>
-        void deformVertex(typename CoordSystem::Position pos, float dz)
-        {
-            QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
-            if (!leaf) {
-                return;
+        // Retrieve the tile’s metadata.
+        TileMetadata* metadata = leaf->getType();
+        
+        // Instead of initializing a full grid from the mesh,
+        // we simply check whether there is already a deformed point near (x,y).
+        const int level = leaf->getLevel();
+        const float baseThreshold = 0.05f; // adjust this base value as needed
+        bool updated = false;
+        for (auto& dp : metadata->dirtyVertices) {
+            float dist = CoordinateTraits<Cartesian>::distance({dp.x,dp.y}, pos);
+            if (dist < baseThreshold) {
+                dp.z += dz;
+                updated = true;
+                break;
             }
-            
-            // Retrieve the tile’s metadata.
-            TileMetadata* metadata = leaf->getType();
-            
-            // Instead of initializing a full grid from the mesh,
-            // we simply check whether there is already a deformed point near (x,y).
-            const int level = leaf->getLevel();
-            const float baseThreshold = 0.05f; // adjust this base value as needed
-            bool updated = false;
-            for (auto& dp : metadata->dirtyVertices) {
-                float dist = CoordinateTraits<Cartesian>::distance({dp.x,dp.y}, pos);
-                if (dist < baseThreshold) {
-                    dp.z += dz;
-                    updated = true;
-                    break;
-                }
-            }
-            
-            if (!updated) {
-                // No existing dirty point is nearby, so add a new one.
-                vec3 newPoint{pos.x,pos.y,computeBaseElevation(pos)+dz};
-                metadata->dirtyVertices.push_back(newPoint);
-            }
-
-            updateMesh(leaf);   
+        }
+        
+        if (!updated) {
+            // No existing dirty point is nearby, so add a new one.
+            vec3 newPoint{pos.x,pos.y,computeBaseElevation(pos)+dz};
+            metadata->dirtyVertices.push_back(newPoint);
         }
 
-        QuadTree<TileMetadata>* getTree() const;
-        std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
-        size_t getMemoryUsage() const;
+        updateMesh(leaf);   
+    }
 
-        /**
-        * Retrieves the elevation at a given (x, y) coordinate.
-        *
-        * If a GeoTIFFLoader is provided, it converts world coordinates (x, y) to pixel
-        * coordinates using the geotransform and returns the elevation from the raster data.
-        * Otherwise, it falls back to generating elevation using Perlin noise.
-        */
-        template<typename CoordSystem>
-        float getElevation(typename CoordSystem::Position pos);
+    QuadTree<TileMetadata>* getTree() const;
+    std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
+    size_t getMemoryUsage() const;
 
-        float computeBaseElevation(Cartesian::Position pos);
-        void deduplicateVertices(std::vector<vec3>& vertices);
+    /**
+    * Retrieves the elevation at a given (x, y) coordinate.
+    *
+    * If a GeoTIFFLoader is provided, it converts world coordinates (x, y) to pixel
+    * coordinates using the geotransform and returns the elevation from the raster data.
+    * Otherwise, it falls back to generating elevation using Perlin noise.
+    */
+    float getElevation(typename CoordSystem::Position pos);
 
-        //std::unordered_set<QuadTree<TileMetadata>*> getDirtyTiles() { return dirtyTiles; }
+    float computeBaseElevation(typename CoordSystem::Position pos);
+    void deduplicateVertices(std::vector<vec3>& vertices);
 
-    private:
-        // Recursive function to update level-of-detail.
-        template<typename CoordSystem>
-        void updateLODRec(QuadTree<TileMetadata>* node,
-                        float cameraX, float cameraY, float cameraZ,
-                        float splitThreshold, float mergeThreshold,
-                        int& subdivisions);
+    //std::unordered_set<QuadTree<TileMetadata>*> getDirtyTiles() { return dirtyTiles; }
 
-        // Called when a new bucket (node) is created.
-        void onNewBucket(QuadTree<TileMetadata>* node);
-        void onSplit(QuadTree<TileMetadata>* parent);
-        void onMerge(QuadTree<TileMetadata>* node);
+private:
+    // Recursive function to update level-of-detail.
+    void updateLODRec(QuadTree<TileMetadata>* node,
+                    float cameraX, float cameraY, float cameraZ,
+                    float splitThreshold, float mergeThreshold,
+                    int& subdivisions);
 
-        // Called when a bucket (node) is unloaded.
-        void onUnloadBucket(QuadTree<TileMetadata>* node);
+    // Called when a new bucket (node) is created.
+    void onNewBucket(QuadTree<TileMetadata>* node);
+    void onSplit(QuadTree<TileMetadata>* parent);
+    void onMerge(QuadTree<TileMetadata>* node);
 
-
-        template<typename CoordSystem>
-        void updateMesh(QuadTree<TileMetadata, CoordSystem>* node);
+    // Called when a bucket (node) is unloaded.
+    void onUnloadBucket(QuadTree<TileMetadata>* node);
 
 
-        // Search down from any CoordSystem–typed tree to find the leaf containing pos.
-        template<typename CoordSystem>
-        QuadTree<TileMetadata, CoordSystem>* findLeafNode( 
-                        QuadTree<TileMetadata, CoordSystem>* node,
-                        typename CoordSystem::Position pos );
+    void updateMesh(QuadTree<TileMetadata, CoordSystem>* node);
 
 
-        /**
-        * Generates a triangular mesh for the tile.
-        *
-        * The elevation for each vertex is computed using either the GeoTIFF data
-        * (if available) or Perlin noise.
-        */
-        template<typename CoordSystem>
-        Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level);
-
-        // Cross product helper.
-        static inline void cross(const float* a, const float* b, float* result);
-
-        // Normalize helper.
-        static inline void normalize(float* v);
-
-        // Estimate normals for the mesh.
-        void calculateNormals(Mesh& mesh);
+    // Search down from any CoordSystem–typed tree to find the leaf containing pos.
+    QuadTree<TileMetadata, CoordSystem>* findLeafNode( 
+                    QuadTree<TileMetadata, CoordSystem>* node,
+                    typename CoordSystem::Position pos );
 
 
-        QuadTree<TileMetadata, Cartesian>* tree;
-        // Mapping from a quadtree node to its mesh.
-        std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes;
-        // Optional pointer to a GeoTIFFLoader for elevation data.
-        GeoTIFFLoader* geoTIFFLoader;
+    /**
+    * Generates a triangular mesh for the tile.
+    *
+    * The elevation for each vertex is computed using either the GeoTIFF data
+    * (if available) or Perlin noise.
+    */
+    Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level);
 
-        std::unordered_set<QuadTree<TileMetadata>*> dirtyTiles;
-    };
+    // Cross product helper.
+    static inline void cross(const float* a, const float* b, float* result);
 
-    #endif // QUADTREE_TILE_H
+    // Normalize helper.
+    static inline void normalize(float* v);
+
+    // Estimate normals for the mesh.
+    void calculateNormals(Mesh& mesh);
+
+
+    QuadTree<TileMetadata, Cartesian>* tree;
+    // Mapping from a quadtree node to its mesh.
+    std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes;
+    // Optional pointer to a GeoTIFFLoader for elevation data.
+    GeoTIFFLoader* geoTIFFLoader;
+
+    std::unordered_set<QuadTree<TileMetadata>*> dirtyTiles;
+};
+
+#endif // QUADTREE_TILE_H

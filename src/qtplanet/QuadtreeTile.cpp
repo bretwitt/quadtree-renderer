@@ -7,10 +7,11 @@
 // ------------------------------
 // Constructor & Destructor
 // ------------------------------
-QuadtreeTile::QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader)
+template<typename CoordSystem>
+QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, GeoTIFFLoader* geoLoader)
     : geoTIFFLoader(geoLoader)
 {
-    tree = new QuadTree<TileMetadata,Cartesian>(b);
+    tree = new QuadTree<TileMetadata,CoordSystem>(b);
     
     // Set up callbacks.
     tree->nodeInitCallback = [this](QuadTree<TileMetadata>* node) {
@@ -29,32 +30,38 @@ QuadtreeTile::QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader)
     };
 }
 
-QuadtreeTile::~QuadtreeTile() {
+template<typename CoordSystem>
+QuadtreeTile<CoordSystem>::~QuadtreeTile() {
     delete tree;
 }
 
 // ------------------------------
 // Public Methods
 // ------------------------------
-void QuadtreeTile::updateLOD(float cameraX, float cameraY, float cameraZ,
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::updateLOD(float cameraX, float cameraY, float cameraZ,
                              float splitThreshold, float mergeThreshold, int& subdivisions)
 {
-    updateLODRec<Cartesian>(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
+    updateLODRec(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
 }
 
-QuadTree<TileMetadata>* QuadtreeTile::getTree() const {
+template<typename CoordSystem>
+QuadTree<TileMetadata>* QuadtreeTile<CoordSystem>::getTree() const {
     return tree;
 }
 
-std::unordered_map<QuadTree<TileMetadata>*, Mesh> QuadtreeTile::getMeshes() {
+template<typename CoordSystem>
+std::unordered_map<QuadTree<TileMetadata>*, Mesh> QuadtreeTile<CoordSystem>::getMeshes() {
     return bucketMeshes;
 }
 
-void QuadtreeTile::tick() {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::tick() {
     tickLeaves(getTree());
 }
 
-void QuadtreeTile::tickLeaves(QuadTree<TileMetadata>* node) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::tickLeaves(QuadTree<TileMetadata>* node) {
     if (!node) return;  
 
     if (node->isDivided()) {
@@ -82,7 +89,8 @@ void QuadtreeTile::tickLeaves(QuadTree<TileMetadata>* node) {
     }
 }
 
-size_t QuadtreeTile::getMemoryUsage() const {
+template<typename CoordSystem>
+size_t QuadtreeTile<CoordSystem>::getMemoryUsage() const {
     size_t totalMemory = 0;
     for (const auto& bucketMesh : bucketMeshes) {
         const Mesh& mesh = bucketMesh.second;
@@ -101,7 +109,7 @@ size_t QuadtreeTile::getMemoryUsage() const {
 // ------------------------------
 
 template<typename CoordSystem>
-void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
+void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata>* node,
                                 float cameraX, float cameraY, float cameraZ,
                                 float splitThreshold, float mergeThreshold,
                                 int& subdivisions)
@@ -114,11 +122,11 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
     float top    = boundary.y - boundary.height;
     float bottom = boundary.y + boundary.height;
 
-    float distance = CoordinateTraits<CoordSystem>::distanceTo
-            (
-                boundary, cameraX, cameraY, cameraZ, 
-                getElevation<CoordSystem>( {boundary.x,boundary.y })
-            );
+    float distance = CoordinateTraits<CoordSystem>::distanceToBounds
+        (
+            boundary, cameraX, cameraY, cameraZ, 
+            getElevation( {boundary.x,boundary.y })
+        );
 
     int level = node->getLevel();
 
@@ -161,13 +169,13 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
             subdivisions++; 
         }
         if (node->isDivided()) {
-            updateLODRec<Cartesian>(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec<Cartesian>(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec<Cartesian>(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec<Cartesian>(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
         }
     }
@@ -178,12 +186,14 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
     }
 }
 
-void QuadtreeTile::onNewBucket(QuadTree<TileMetadata>* node) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::onNewBucket(QuadTree<TileMetadata>* node) {
     updateMesh(node);
 }
 
 
-void QuadtreeTile::onSplit(QuadTree<TileMetadata>* parent) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::onSplit(QuadTree<TileMetadata>* parent) {
     if (!parent) return;
     
     TileMetadata* parentMeta = parent->getType();
@@ -212,7 +222,8 @@ void QuadtreeTile::onSplit(QuadTree<TileMetadata>* parent) {
     parent->getType()->ticksSinceSplit = 0; 
 }
 
-void QuadtreeTile::deduplicateVertices(std::vector<vec3>& vertices) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::deduplicateVertices(std::vector<vec3>& vertices) {
     std::sort(vertices.begin(), vertices.end(), [](const vec3& a, const vec3& b) {
         if (a.x != b.x) return a.x < b.x;
         if (a.y != b.y) return a.y < b.y;
@@ -227,7 +238,8 @@ void QuadtreeTile::deduplicateVertices(std::vector<vec3>& vertices) {
     }), vertices.end());
 }
 
-void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::onMerge(QuadTree<TileMetadata>* node) {
     if (!node) return;
 
     TileMetadata* parentMeta = node->getType();
@@ -249,15 +261,16 @@ void QuadtreeTile::onMerge(QuadTree<TileMetadata>* node) {
     parentMeta->ticksSinceMerge = 0;
 }
 
-void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::onUnloadBucket(QuadTree<TileMetadata>* node) {
     auto it = bucketMeshes.find(node);
     if (it != bucketMeshes.end()) {
         bucketMeshes.erase(it);
     }
 }
 
-
-float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
+template<typename CoordSystem>
+float QuadtreeTile<CoordSystem>::computeBaseElevation(CoordSystem::Position pos) {
     if (geoTIFFLoader) {
         const std::vector<double>& gt = geoTIFFLoader->getGeoTransform();
         // Assuming the geotransform is of the form:
@@ -308,52 +321,27 @@ float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
     }
 }
 
-template<typename CoordSystem>
-float QuadtreeTile::getElevation(typename CoordSystem::Position pos) {
-    float baseElevation = computeBaseElevation(pos);
-
-    QuadTree<TileMetadata, Cartesian>* leafNode = findLeafNode<CoordSystem>(tree, pos);
-    if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
-
-    const TileMetadata* metadata = leafNode->getType();
-    if (metadata->dirtyVertices.empty()) return baseElevation;  // No deformation.
-
-    float weightedSum = 0.0f, totalWeight = 0.0f;
-    // const float epsilon = 1e-5f;  // Prevent division by zero.
-    const float influenceRadius = 1e-1f;
-
-    for (const auto& dp : metadata->dirtyVertices) {
-        float distance = CoordinateTraits<CoordSystem>::distance(pos,{dp.x,dp.y});
-
-        if(distance < influenceRadius) {
-            float weight = 1.0f/(distance);
-            weightedSum += (dp.z)*weight;
-            totalWeight+=weight;
-        }
-    }
-
-    return (totalWeight > 0.0f) ? weightedSum / totalWeight : baseElevation;
-}
 
 
 template<typename CoordSystem>
-void QuadtreeTile::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
+void QuadtreeTile<CoordSystem>::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
     int level = node->getLevel();
     typename CoordSystem::Boundary childBounds = node->getBoundary();
 
     // Generate the mesh for the child.
-    Mesh mesh = generateTriangularMesh<CoordSystem>(childBounds, level);
+    Mesh mesh = generateTriangularMesh(childBounds, level);
     bucketMeshes[node] = mesh;
 }
 
-
-void QuadtreeTile::cross(const float* a, const float* b, float* result) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::cross(const float* a, const float* b, float* result) {
     result[0] = a[1] * b[2] - a[2] * b[1];
     result[1] = a[2] * b[0] - a[0] * b[2];
     result[2] = a[0] * b[1] - a[1] * b[0];
 }
 
-void QuadtreeTile::normalize(float* v) {
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::normalize(float* v) {
     float length = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     if (length > 1e-8f) {
         v[0] /= length;
@@ -362,7 +350,8 @@ void QuadtreeTile::normalize(float* v) {
     }
 }
 
-void QuadtreeTile::calculateNormals(Mesh& mesh)
+template<typename CoordSystem>
+void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
 {
     const size_t vertexCount = mesh.vertices.size() / 3;
     mesh.normals.resize(mesh.vertices.size(), 0.0f); // 3 floats per vertex, initialized to 0
@@ -418,7 +407,7 @@ void QuadtreeTile::calculateNormals(Mesh& mesh)
 }
 
 template<typename CoordSystem>
-Mesh QuadtreeTile::generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
+Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
 {
     Mesh mesh;
 
@@ -427,8 +416,7 @@ Mesh QuadtreeTile::generateTriangularMesh(typename CoordSystem::Boundary bounds,
 
     for (int j = 0; j < numVerticesPerSide; ++j) {
         for (int i = 0; i < numVerticesPerSide; ++i) {
-            auto [x, y] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions);
-            float z = getElevation<CoordSystem>({x, y}); //TODO: this is dumb, wont work on polar
+            auto [x, y, z] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions, tree, geoTIFFLoader);
 
             mesh.vertices.push_back(x);
             mesh.vertices.push_back(y);
@@ -463,7 +451,12 @@ Mesh QuadtreeTile::generateTriangularMesh(typename CoordSystem::Boundary bounds,
 }
 
 template<typename CoordSystem>
-QuadTree<TileMetadata, CoordSystem>* QuadtreeTile::findLeafNode( 
+float QuadtreeTile<CoordSystem>::getElevation(typename CoordSystem::Position pos) {
+    return CoordinateTraits<CoordSystem>::getElevation(pos, tree, geoTIFFLoader);
+}
+
+template<typename CoordSystem>
+QuadTree<TileMetadata, CoordSystem>* QuadtreeTile<CoordSystem>::findLeafNode( 
                 QuadTree<TileMetadata, CoordSystem>* node,
                 typename CoordSystem::Position pos ) 
 {
@@ -486,7 +479,7 @@ QuadTree<TileMetadata, CoordSystem>* QuadtreeTile::findLeafNode(
         return node;
 
     // Otherwise, search the children.
-    QuadTree<TileMetadata>* found = findLeafNode<CoordSystem>(node->getNortheastNonConst(), pos);
+    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), pos);
     if (found) return found;
     found = findLeafNode(node->getNorthwestNonConst(), pos);
     if (found) return found;
@@ -498,9 +491,4 @@ QuadTree<TileMetadata, CoordSystem>* QuadtreeTile::findLeafNode(
 /*
  * Explicit template instantiation for Cartesian coordinate system.
 */
-template Mesh QuadtreeTile::generateTriangularMesh<Cartesian>(Cartesian::Boundary, int);
-template QuadTree<TileMetadata, Cartesian>* QuadtreeTile::findLeafNode( 
-                QuadTree<TileMetadata, Cartesian>* node,
-                typename Cartesian::Position pos );
-template float QuadtreeTile::getElevation<Cartesian>(Cartesian::Position pos);
-template void QuadtreeTile::updateMesh<Cartesian>(QuadTree<TileMetadata, Cartesian>* node);
+template class QuadtreeTile<Cartesian>;

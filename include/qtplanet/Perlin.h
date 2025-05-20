@@ -1,4 +1,5 @@
-
+#ifndef QTPLANET_PERLIN_H
+#define QTPLANET_PERLIN_H
 //----------------------------------------------------------
 // A simple Perlin noise implementation in 2D.
 // (This is a basic version; for more robust noise consider using an external library.)
@@ -65,3 +66,5 @@ namespace Perlin {
         return res;
     }
 } // namespace Perlin
+
+#endif // QTPLANET_PERLIN_H

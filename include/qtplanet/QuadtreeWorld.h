@@ -73,7 +73,7 @@ public:
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> getAllMeshes();
 
     float getElevation(float x, float y);
-    std::unordered_map<TileKey, QuadtreeTile*> getTiles() { return tiles; };
+    std::unordered_map<TileKey, QuadtreeTile<Cartesian>*> getTiles() { return tiles; };
 
     //std::unordered_set<QuadtreeTile*> getDirtyTiles() { return dirtyTiles; };
 
@@ -86,7 +86,7 @@ private:
     float mergeThreshold;        // Base threshold for merging quadtree nodes.
 
     // A mapping from a grid key to a pointer to a QuadtreeTile.
-    std::unordered_map<TileKey, QuadtreeTile*> tiles;
+    std::unordered_map<TileKey, QuadtreeTile<Cartesian>*> tiles;
     //std::unordered_set<QuadtreeTile*> dirtyTiles;
 
     GeoTIFFLoader loader;
