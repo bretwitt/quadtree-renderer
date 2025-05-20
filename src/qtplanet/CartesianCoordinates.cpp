@@ -66,6 +66,7 @@ CoordinateTraits<Cartesian>::cartesianAt(const Boundary& b,
     return { x, y, z };
 }
 
+
 float CoordinateTraits<Cartesian>::computeBaseElevation(
     const Cartesian::Position& pos,
     const GeoTIFFLoader* geoLoader)
@@ -123,7 +124,7 @@ CoordinateTraits<Cartesian>::findLeafNode(QuadTree<TileMetadata,Cartesian>* node
         return nullptr;
 
     // Get the node’s boundary.
-    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
+    Cartesian::Boundary boundary = node->getBoundary();
     float left   = boundary.x - boundary.width;
     float right  = boundary.x + boundary.width;
     float top    = boundary.y - boundary.height;
@@ -138,7 +139,7 @@ CoordinateTraits<Cartesian>::findLeafNode(QuadTree<TileMetadata,Cartesian>* node
         return node;
 
     // Otherwise, search the children.
-    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), pos);
+    QuadTree<TileMetadata, Cartesian>* found = findLeafNode(node->getNortheastNonConst(), pos);
     if (found) return found;
     found = findLeafNode(node->getNorthwestNonConst(), pos);
     if (found) return found;

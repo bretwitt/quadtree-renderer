@@ -11,13 +11,13 @@
 using std::cout;
 using std::endl;
 
-template<typename T, typename CoordSystem = Cartesian>
+template<typename T, typename CoordSystem>
 class QuadTree {
 public:
-    using NodeInitCallback = std::function<void(QuadTree<T>*)>;
-    using NodeDestroyCallback = std::function<void(QuadTree<T>*)>;
-    using NodeSplitCallback = std::function<void(QuadTree<T>*)>;
-    using NodeMergeCallback = std::function<void(QuadTree<T>*)>;
+    using NodeInitCallback = std::function<void(QuadTree<T,CoordSystem>*)>;
+    using NodeDestroyCallback = std::function<void(QuadTree<T,CoordSystem>*)>;
+    using NodeSplitCallback = std::function<void(QuadTree<T,CoordSystem>*)>;
+    using NodeMergeCallback = std::function<void(QuadTree<T,CoordSystem>*)>;
 
     NodeInitCallback nodeInitCallback;
     NodeDestroyCallback nodeDestroyCallback;
@@ -26,15 +26,25 @@ public:
    
     using Boundary = typename CoordSystem::Boundary;
     using Traits = CoordinateTraits<CoordSystem>;
+    // QuadTree(Boundary boundary,
+    //          T type = T{},
+    //          CoordSystem ctype = CoordSystem{},
+    //          int level = 0, 
+    //          NodeInitCallback nodeInitCallback = nullptr,
+    //          NodeDestroyCallback nodeDestroyCallback = nullptr, 
+    //          NodeSplitCallback nodeSplitCallback = nullptr,
+    //          NodeMergeCallback nodeMergeCallback = nullptr,
+    //          QuadTree<T, CoordSystem>* parent = nullptr)
 
-    QuadTree(Boundary boundary, T type = T{}, int level = 0, 
+    QuadTree(Boundary boundary, T type = T{}, CoordSystem ctype = CoordSystem{}, int level = 0, 
              NodeInitCallback nodeInitCallback = nullptr,
              NodeDestroyCallback nodeDestroyCallback = nullptr, 
              NodeSplitCallback nodeSplitCallback = nullptr,
              NodeMergeCallback nodeMergeCallback = nullptr,
-             QuadTree<T>* parent = nullptr)
+             QuadTree<T, CoordSystem>* parent = nullptr)
         : boundary{ boundary },
           type(type),
+          ctype(ctype),
           divided(false),
           level(level),
           nodeInitCallback(nodeInitCallback),
@@ -99,10 +109,10 @@ public:
 
         auto childBounds = Traits::getChildBounds(boundary);
 
-        northeast = new QuadTree(childBounds[0], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        northwest = new QuadTree(childBounds[1], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southeast = new QuadTree(childBounds[2], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southwest = new QuadTree(childBounds[3], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        northeast = new QuadTree(childBounds[0], type, ctype, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        northwest = new QuadTree(childBounds[1], type, ctype, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southeast = new QuadTree(childBounds[2], type, ctype, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southwest = new QuadTree(childBounds[3], type, ctype, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
 
         divided = true;
 
@@ -142,11 +152,11 @@ public:
                    southwest->getNumChildren();
     }
 
-    void collectLeaves(std::vector<QuadTree<T>*>& leaves) {
-        std::stack<QuadTree<T>*> stack;
+    void collectLeaves(std::vector<QuadTree<T,CoordSystem>*>& leaves) {
+        std::stack<QuadTree<T,CoordSystem>*> stack;
         stack.push(this);
         while(!stack.empty()) {
-            QuadTree<T>* node = stack.top();
+            QuadTree<T,CoordSystem>* node = stack.top();
             stack.pop();
             if(!node->divided) {
                 leaves.push_back(node);
@@ -160,7 +170,7 @@ public:
         
     }
 
-    std::vector<QuadTree<T>*> getLeaves() {
+    std::vector<QuadTree<T,CoordSystem>*> getLeaves() {
         // if (cacheValid) {
         //     return leafCache; // Return cached result if valid
         // }
@@ -174,27 +184,29 @@ public:
 
     bool getCacheValid() { return cacheValid; }
 
-    QuadTree* getNortheastNonConst() { return northeast; }
-    QuadTree* getNorthwestNonConst() { return northwest; }
-    QuadTree* getSoutheastNonConst() { return southeast; }
-    QuadTree* getSouthwestNonConst() { return southwest; }
-    QuadTree* getNortheast() const { return northeast; }
-    QuadTree* getNorthwest() const { return northwest; }
-    QuadTree* getSoutheast() const { return southeast; }
-    QuadTree* getSouthwest() const { return southwest; }
+    QuadTree<T, CoordSystem>* getNortheastNonConst() { return northeast; }
+    QuadTree<T, CoordSystem>* getNorthwestNonConst() { return northwest; }
+    QuadTree<T, CoordSystem>* getSoutheastNonConst() { return southeast; }
+    QuadTree<T, CoordSystem>* getSouthwestNonConst() { return southwest; }
+    QuadTree<T, CoordSystem>* getNortheast() const { return northeast; }
+    QuadTree<T, CoordSystem>* getNorthwest() const { return northwest; }
+    QuadTree<T, CoordSystem>* getSoutheast() const { return southeast; }
+    QuadTree<T, CoordSystem>* getSouthwest() const { return southwest; }
 
 private:
     Boundary boundary;
     T type;
+    CoordSystem ctype;
     bool divided = false;
     int level;
-    QuadTree* northeast;
-    QuadTree* northwest;
-    QuadTree* southeast;
-    QuadTree* southwest;
-    QuadTree* m_parent;
+    QuadTree<T, CoordSystem>* northeast;
+    QuadTree<T, CoordSystem>* northwest;
+    QuadTree<T, CoordSystem>* southeast;
+    QuadTree<T, CoordSystem>* southwest;
+    QuadTree<T, CoordSystem>* m_parent;
+
     
-    std::vector<QuadTree<T>*> leafCache; // Cache for leaf nodes
+    std::vector<QuadTree<T,CoordSystem>*> leafCache; // Cache for leaf nodes
     bool cacheValid; // Flag to track cache validity
 
     void clearCache() {

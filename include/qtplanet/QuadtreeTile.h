@@ -48,11 +48,11 @@ public:
                 float splitThreshold, float mergeThreshold, int& subdivisions);
 
     void tick();
-    void tickLeaves(QuadTree<TileMetadata>* node);
+    void tickLeaves(QuadTree<TileMetadata,CoordSystem>* node);
 
     void deformVertex(typename CoordSystem::Position pos, float dz)
     {
-        QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
+        QuadTree<TileMetadata, CoordSystem>* leaf = findLeafNode(tree, pos);
         if (!leaf) {
             return;
         }
@@ -66,7 +66,7 @@ public:
         const float baseThreshold = 0.05f; // adjust this base value as needed
         bool updated = false;
         for (auto& dp : metadata->dirtyVertices) {
-            float dist = CoordinateTraits<Cartesian>::distance({dp.x,dp.y}, pos);
+            float dist = CoordinateTraits<CoordSystem>::distance({dp.x,dp.y}, pos);
             if (dist < baseThreshold) {
                 dp.z += dz;
                 updated = true;
@@ -76,15 +76,15 @@ public:
         
         if (!updated) {
             // No existing dirty point is nearby, so add a new one.
-            vec3 newPoint{pos.x,pos.y,computeBaseElevation(pos)+dz};
+            vec3 newPoint{pos.asArray()[0],pos.asArray()[1],computeBaseElevation(pos)+dz};
             metadata->dirtyVertices.push_back(newPoint);
         }
 
         updateMesh(leaf);   
     }
 
-    QuadTree<TileMetadata>* getTree() const;
-    std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
+    QuadTree<TileMetadata,CoordSystem>* getTree() const;
+    std::unordered_map<QuadTree<TileMetadata,CoordSystem>*, Mesh> getMeshes();
     size_t getMemoryUsage() const;
 
     /**
@@ -103,18 +103,18 @@ public:
 
 private:
     // Recursive function to update level-of-detail.
-    void updateLODRec(QuadTree<TileMetadata>* node,
+    void updateLODRec(QuadTree<TileMetadata, CoordSystem>* node,
                     float cameraX, float cameraY, float cameraZ,
                     float splitThreshold, float mergeThreshold,
                     int& subdivisions);
 
     // Called when a new bucket (node) is created.
-    void onNewBucket(QuadTree<TileMetadata>* node);
-    void onSplit(QuadTree<TileMetadata>* parent);
-    void onMerge(QuadTree<TileMetadata>* node);
+    void onNewBucket(QuadTree<TileMetadata, CoordSystem>* node);
+    void onSplit(QuadTree<TileMetadata, CoordSystem>* parent);
+    void onMerge(QuadTree<TileMetadata, CoordSystem>* node);
 
     // Called when a bucket (node) is unloaded.
-    void onUnloadBucket(QuadTree<TileMetadata>* node);
+    void onUnloadBucket(QuadTree<TileMetadata,CoordSystem>* node);
 
 
     void updateMesh(QuadTree<TileMetadata, CoordSystem>* node);
@@ -144,13 +144,13 @@ private:
     void calculateNormals(Mesh& mesh);
 
 
-    QuadTree<TileMetadata, Cartesian>* tree;
+    QuadTree<TileMetadata, CoordSystem>* tree;
     // Mapping from a quadtree node to its mesh.
-    std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes;
+    std::unordered_map<QuadTree<TileMetadata, CoordSystem>*, Mesh> bucketMeshes;
     // Optional pointer to a GeoTIFFLoader for elevation data.
     GeoTIFFLoader* geoTIFFLoader;
 
-    std::unordered_set<QuadTree<TileMetadata>*> dirtyTiles;
+    std::unordered_set<QuadTree<TileMetadata, CoordSystem>*> dirtyTiles;
 };
 
 #endif // QUADTREE_TILE_H

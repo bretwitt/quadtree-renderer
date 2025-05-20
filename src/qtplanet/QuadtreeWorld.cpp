@@ -32,30 +32,16 @@ QuadtreeWorld::~QuadtreeWorld() {
 //---------------------------------------------------------------------
 
 void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
-    // *** Update view range based on the camera's height ***
-    // Define a base height that corresponds to the initial view range.
-    // The absolute value of cameraZ is used so that negative heights are handled correctly.
     const float baseHeight = -0.0f; // Adjust this as needed.
-    
-    // Optional: clamp the view range to sensible minimum and maximum values.
-    const int minViewRange = 10;
+        const int minViewRange = 10;
     const int maxViewRange = 30;
-    
-    // Compute a dynamic view range using the absolute height of the camera.
-    // If the camera's height (absolute value) equals baseHeight, then the dynamic view range equals viewRangeInTiles.
-    // For greater heights, the view range increases proportionally.
     float dZ = cameraZ - baseHeight;
     int dynamicViewRange = 15;
     // dynamicViewRange = std::max(minViewRange, std::min(maxViewRange, dynamicViewRange));
 
-    // Determine the grid index of the tile that contains the camera.
-    int centerTileX = static_cast<int>(std::floor(cameraX / tileSize));
-    int centerTileY = static_cast<int>(std::floor(cameraY / tileSize));
+    auto [ centerTileX, centerTileY ] = CoordinateTraits<Spherical>::computeTileIndices({cameraX, cameraY}, tileSize);
 
-    // Create a temporary map representing the tiles that should be active.
     std::unordered_map<TileKey, bool> neededTiles;
-
-    // Loop over a square region around the camera using the dynamic view range.
     for (int dy = -dynamicViewRange; dy <= dynamicViewRange; ++dy) {
         for (int dx = -dynamicViewRange; dx <= dynamicViewRange; ++dx) {
             int tileX = centerTileX + dx;
@@ -65,11 +51,9 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
 
             // If this tile does not exist yet, create and initialize it.
             if (tiles.find(key) == tiles.end()) {
-                // Compute the center position of the tile.
-                float centerPosX = tileX * tileSize + tileSize * 0.5f;
-                float centerPosY = tileY * tileSize + tileSize * 0.5f;
+                auto [ centerPosX, centerPosY ] = CoordinateTraits<Spherical>::tileCenterPosition(key, tileSize);
                 float halfSize = tileSize * 0.5f;
-                tiles[key] = new QuadtreeTile<Cartesian>({centerPosX, centerPosY, halfSize, halfSize}, &loader);
+                tiles[key] = new QuadtreeTile<Spherical>({centerPosX, centerPosY, halfSize, halfSize}, &loader);
             }
         }
     }
@@ -83,7 +67,8 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
             ++it;
         }
     }
-    // Update each active tile's level-of-detail based on the camera's position.
+
+    // Update each active tile's LOD based on the camera's position.
     for (auto& pair : tiles) {
         int subdivisions = 0;
         pair.second->updateLOD(cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
@@ -124,8 +109,8 @@ size_t QuadtreeWorld::getMemoryUsage() const {
 //
 // Aggregates and returns all the meshes from each tile's buckets.
 //---------------------------------------------------------------------
-std::unordered_map<QuadTree<TileMetadata>*, Mesh> QuadtreeWorld::getAllMeshes() {
-    std::unordered_map<QuadTree<TileMetadata>*, Mesh> allMeshes;
+std::unordered_map<QuadTree<TileMetadata,Spherical>*, Mesh> QuadtreeWorld::getAllMeshes() {
+    std::unordered_map<QuadTree<TileMetadata,Spherical>*, Mesh> allMeshes;
     for (auto& pair : tiles) {
         auto tileMeshes = pair.second->getMeshes();
         allMeshes.insert(tileMeshes.begin(), tileMeshes.end());
@@ -134,21 +119,13 @@ std::unordered_map<QuadTree<TileMetadata>*, Mesh> QuadtreeWorld::getAllMeshes() 
 }
 
 void QuadtreeWorld::deformVertex(float x, float y, float dz) {
-    // Compute the grid indices for the tile that should cover (x,y).
-    int tileX = static_cast<int>(std::floor(x / tileSize));
-    int tileY = static_cast<int>(std::floor(y / tileSize));
+    auto [ tileX, tileY ] = CoordinateTraits<Spherical>::computeTileIndices({x,y}, tileSize);
     TileKey key{ tileX, tileY };
 
     auto it = tiles.find(key);
     if (it != tiles.end()) {
-
-        it->second->deformVertex(Cartesian::Position {x,y}, dz);
-        // auto _it = std::find(dirtyTiles.begin(),dirtyTiles.end(), it->second);
-        // dirtyTiles.insert(it->second);
-
-        // std::cout << "Deforming" << std::endl;
+        it->second->deformVertex({x,y}, dz);
     } else {
-
         return;
     }
 }
@@ -164,7 +141,6 @@ float QuadtreeWorld::getElevation(float x, float y) {
     if (it != tiles.end()) {
         // Forward the deformation to the tile.
         return it->second->getElevation({x,y});
-        
     } else {
         return -1;
     }

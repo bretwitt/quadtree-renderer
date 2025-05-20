@@ -14,17 +14,18 @@ QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, GeoTIF
     tree = new QuadTree<TileMetadata,CoordSystem>(b);
     
     // Set up callbacks.
-    tree->nodeInitCallback = [this](QuadTree<TileMetadata>* node) {
+    tree->nodeInitCallback = [this](QuadTree<TileMetadata, CoordSystem>* node) {
         this->onNewBucket(node);
     };
-    tree->nodeDestroyCallback = [this](QuadTree<TileMetadata>* node) {
+
+    tree->nodeDestroyCallback = [this](QuadTree<TileMetadata, CoordSystem>* node) {
         this->onUnloadBucket(node);
     };
-    tree->nodeSplitCallback = [this](QuadTree<TileMetadata>* parent) {
+    tree->nodeSplitCallback = [this](QuadTree<TileMetadata, CoordSystem>* parent) {
         this->onUnloadBucket(parent);
         this->onSplit(parent);
     };
-    tree->nodeMergeCallback = [this](QuadTree<TileMetadata>* node) {
+    tree->nodeMergeCallback = [this](QuadTree<TileMetadata, CoordSystem>* node) {
         this->onNewBucket(node);
         this->onMerge(node);
     };
@@ -46,12 +47,12 @@ void QuadtreeTile<CoordSystem>::updateLOD(float cameraX, float cameraY, float ca
 }
 
 template<typename CoordSystem>
-QuadTree<TileMetadata>* QuadtreeTile<CoordSystem>::getTree() const {
+QuadTree<TileMetadata,CoordSystem>* QuadtreeTile<CoordSystem>::getTree() const {
     return tree;
 }
 
 template<typename CoordSystem>
-std::unordered_map<QuadTree<TileMetadata>*, Mesh> QuadtreeTile<CoordSystem>::getMeshes() {
+std::unordered_map<QuadTree<TileMetadata,CoordSystem>*, Mesh> QuadtreeTile<CoordSystem>::getMeshes() {
     return bucketMeshes;
 }
 
@@ -61,7 +62,7 @@ void QuadtreeTile<CoordSystem>::tick() {
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::tickLeaves(QuadTree<TileMetadata>* node) {
+void QuadtreeTile<CoordSystem>::tickLeaves(QuadTree<TileMetadata,CoordSystem>* node) {
     if (!node) return;  
 
     if (node->isDivided()) {
@@ -109,13 +110,13 @@ size_t QuadtreeTile<CoordSystem>::getMemoryUsage() const {
 // ------------------------------
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata>* node,
+void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>* node,
                                 float cameraX, float cameraY, float cameraZ,
                                 float splitThreshold, float mergeThreshold,
                                 int& subdivisions)
 {
     // Retrieve the node's boundary.
-    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
+    typename CoordSystem::Boundary boundary = node->getBoundary();
 
     float left   = boundary.x - boundary.width;
     float right  = boundary.x + boundary.width;
@@ -186,24 +187,24 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata>* node,
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::onNewBucket(QuadTree<TileMetadata>* node) {
+void QuadtreeTile<CoordSystem>::onNewBucket(QuadTree<TileMetadata,CoordSystem>* node) {
     updateMesh(node);
 }
 
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::onSplit(QuadTree<TileMetadata>* parent) {
+void QuadtreeTile<CoordSystem>::onSplit(QuadTree<TileMetadata,CoordSystem>* parent) {
     if (!parent) return;
     
     TileMetadata* parentMeta = parent->getType();
     if (!parentMeta->dirtyVerticesTransferred) {
         // Transfer dirty vertices to children using half-open bounds:
-        auto transferToChild = [parentMeta](QuadTree<TileMetadata>* child) {
+        auto transferToChild = [parentMeta](QuadTree<TileMetadata,CoordSystem>* child) {
             if (!child) return;
             TileMetadata* childMeta = child->getType();
             childMeta->dirtyVertices.clear();
             for(const auto& dp : parentMeta->dirtyVertices) {
-                 if(CoordinateTraits<Cartesian>::contains(child->getBoundary(), dp.x,dp.y)) {
+                 if(CoordinateTraits<CoordSystem>::contains(child->getBoundary(), dp.x,dp.y)) {
                      childMeta->dirtyVertices.push_back(dp);
                  }
             }
@@ -238,7 +239,7 @@ void QuadtreeTile<CoordSystem>::deduplicateVertices(std::vector<vec3>& vertices)
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::onMerge(QuadTree<TileMetadata>* node) {
+void QuadtreeTile<CoordSystem>::onMerge(QuadTree<TileMetadata,CoordSystem>* node) {
     if (!node) return;
 
     TileMetadata* parentMeta = node->getType();
@@ -261,7 +262,7 @@ void QuadtreeTile<CoordSystem>::onMerge(QuadTree<TileMetadata>* node) {
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::onUnloadBucket(QuadTree<TileMetadata>* node) {
+void QuadtreeTile<CoordSystem>::onUnloadBucket(QuadTree<TileMetadata,CoordSystem>* node) {
     auto it = bucketMeshes.find(node);
     if (it != bucketMeshes.end()) {
         bucketMeshes.erase(it);
@@ -269,55 +270,13 @@ void QuadtreeTile<CoordSystem>::onUnloadBucket(QuadTree<TileMetadata>* node) {
 }
 
 template<typename CoordSystem>
-float QuadtreeTile<CoordSystem>::computeBaseElevation(CoordSystem::Position pos) {
-    if (geoTIFFLoader) {
-        const std::vector<double>& gt = geoTIFFLoader->getGeoTransform();
-        // Assuming the geotransform is of the form:
-        // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
-        double originX = gt[0];
-        double pixelWidth = gt[1];
-        double originY = 0.0;
-        double pixelHeight = gt[5];
-        
-        double col_f = (pos.x - originX) / pixelWidth;
-        double row_f = (pos.y - originY) / pixelHeight;
-        int col0 = static_cast<int>(std::floor(col_f));
-        int row0 = static_cast<int>(std::floor(row_f));
-        int col1 = col0 + 1;
-        int row1 = row0 + 1;
-        
-        int width = geoTIFFLoader->getWidth();
-        int height = geoTIFFLoader->getHeight();
-        const std::vector<float>& elevationData = geoTIFFLoader->getElevationData();
-        float interpolatedValue = 0.0f;
-        
-        if (col0 >= 0 && row0 >= 0 && col1 < width && row1 < height) {
-            float v00 = elevationData[row0 * width + col0]; // top-left
-            float v10 = elevationData[row0 * width + col1]; // top-right
-            float v01 = elevationData[row1 * width + col0]; // bottom-left
-            float v11 = elevationData[row1 * width + col1]; // bottom-right
-            double tx = col_f - col0;
-            double ty = row_f - row0;
-            interpolatedValue = static_cast<float>(
-                (1 - tx) * (1 - ty) * v00 +
-                tx       * (1 - ty) * v10 +
-                (1 - tx) * ty       * v01 +
-                tx       * ty       * v11
-            );
-        }
-        
-        // Optionally add some Perlin noise
-        float alpha = 0.7f;
-        float frequency = 0.1f;
-        float amplitude = 0.25f;
-        float upscalePerlin = Perlin::noise(pos.x * frequency, pos.y * frequency) * amplitude;
-        
-        return interpolatedValue + (alpha * upscalePerlin);
-    } else {
-        float frequency = 0.1f;
-        float amplitude = 1.0f;
-        return Perlin::noise(pos.x * frequency, pos.y * frequency) * amplitude;
+float QuadtreeTile<CoordSystem>::computeBaseElevation(typename CoordSystem::Position pos) {
+if (geoTIFFLoader == nullptr) {
+        return 0.0f;
     }
+    float res = CoordinateTraits<CoordSystem>::computeBaseElevation(pos, geoTIFFLoader);
+    
+    return res;
 }
 
 template<typename CoordSystem>
@@ -455,35 +414,37 @@ QuadTree<TileMetadata, CoordSystem>* QuadtreeTile<CoordSystem>::findLeafNode(
                 QuadTree<TileMetadata, CoordSystem>* node,
                 typename CoordSystem::Position pos ) 
 {
-    if (!node)
-        return nullptr;
+    return CoordinateTraits<CoordSystem>::findLeafNode(node, pos);
+    // if (!node)
+    //     return nullptr;
 
-    // Get the node’s boundary.
-    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
-    float left   = boundary.x - boundary.width;
-    float right  = boundary.x + boundary.width;
-    float top    = boundary.y - boundary.height;
-    float bottom = boundary.y + boundary.height;
+    // // Get the node’s boundary.
+    // typename CoordSystem::Boundary boundary = node->getBoundary();
+    // float left   = boundary.x - boundary.width;
+    // float right  = boundary.x + boundary.width;
+    // float top    = boundary.y - boundary.height;
+    // float bottom = boundary.y + boundary.height;
 
-    // If (x,y) lies outside this node, return nullptr.
-    if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
-        return nullptr;
+    // // If (x,y) lies outside this node, return nullptr.
+    // if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
+    //     return nullptr;
 
-    // If not divided, this is the leaf.
-    if (!node->isDivided())
-        return node;
+    // // If not divided, this is the leaf.
+    // if (!node->isDivided())
+    //     return node;
 
-    // Otherwise, search the children.
-    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), pos);
-    if (found) return found;
-    found = findLeafNode(node->getNorthwestNonConst(), pos);
-    if (found) return found;
-    found = findLeafNode(node->getSoutheastNonConst(), pos);
-    if (found) return found;
-    return findLeafNode(node->getSouthwestNonConst(), pos);
+    // // Otherwise, search the children.
+    // QuadTree<TileMetadata, CoordSystem>* found = findLeafNode(node->getNortheastNonConst(), pos);
+    // if (found) return found;
+    // found = findLeafNode(node->getNorthwestNonConst(), pos);
+    // if (found) return found;
+    // found = findLeafNode(node->getSoutheastNonConst(), pos);
+    // if (found) return found;
+    // return findLeafNode(node->getSouthwestNonConst(), pos);
 }
 
 /*
  * Explicit template instantiation for Cartesian coordinate system.
 */
 template class QuadtreeTile<Cartesian>;
+template class QuadtreeTile<Spherical>;

@@ -21,7 +21,7 @@ struct GPU_Mesh {
 
 class BucketMeshRenderer {
 public:
-    std::unordered_map<QuadTree<TileMetadata>*, GPU_Mesh> gpuMeshMap;
+    std::unordered_map<QuadTree<TileMetadata,Spherical>*, GPU_Mesh> gpuMeshMap;
 
     GLuint terrainTextureID = 0;
     BucketMeshRenderer() {}
@@ -36,7 +36,7 @@ public:
         return 0.5f * glm::length(glm::cross(v1 - v0, v2 - v0));
     }
 
-    void updateMesh(QuadTree<TileMetadata>* key, const Mesh& mesh) {
+    void updateMesh(QuadTree<TileMetadata,Spherical>* key, const Mesh& mesh) {
         GPU_Mesh gpuMesh;
         auto it = gpuMeshMap.find(key);
         if (it == gpuMeshMap.end()) {
@@ -174,7 +174,7 @@ public:
 
     // Renders all meshes stored in the bucketMeshes map.
     void render(QuadtreeWorld* world, GLuint shaderProgram, glm::vec3 cameraPos) {
-        std::unordered_map<QuadTree<TileMetadata>*, Mesh> bucketMeshes = world->getAllMeshes();
+        std::unordered_map<QuadTree<TileMetadata,Spherical>*, Mesh> bucketMeshes = world->getAllMeshes();
 
         
         glUseProgram(shaderProgram);
@@ -194,7 +194,7 @@ public:
 
         // Iterate over each bucket's mesh.
         for (const auto& entry : bucketMeshes) {
-            QuadTree<TileMetadata>* key = entry.first;
+            QuadTree<TileMetadata,Spherical>* key = entry.first;
             const Mesh& mesh = entry.second;
 
             // Update (or create) the GPU buffers for this mesh.

@@ -46,10 +46,10 @@ public:
     size_t getMemoryUsage() const;
 
     // Aggregates and returns all the meshes from each tile's buckets.
-    std::unordered_map<QuadTree<TileMetadata>*, Mesh> getAllMeshes();
+    std::unordered_map<QuadTree<TileMetadata,Spherical>*, Mesh> getAllMeshes();
 
     float getElevation(float x, float y);
-    std::unordered_map<TileKey, QuadtreeTile<Cartesian>*> getTiles() { return tiles; };
+    std::unordered_map<TileKey, QuadtreeTile<Spherical>*> getTiles() { return tiles; };
 
 
     void deformVertex(float x, float y, float dz);
@@ -60,7 +60,7 @@ private:
     float mergeThreshold;        // Base threshold for merging quadtree nodes.
 
     // A mapping from a grid key to a pointer to a QuadtreeTile.
-    std::unordered_map<TileKey, QuadtreeTile<Cartesian>*> tiles;
+    std::unordered_map<TileKey, QuadtreeTile<Spherical>*> tiles;
     //std::unordered_set<QuadtreeTile*> dirtyTiles;
 
     GeoTIFFLoader loader;
