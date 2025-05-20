@@ -41,6 +41,9 @@ struct CoordinateTraits<Cartesian> {
   static float getElevation(const Position& pos,
                             QuadTree<TileMetadata,Cartesian>* tree,
                             const GeoTIFFLoader* geoLoader);
+
+  static std::pair<float,float> tileCenterPosition(const TileKey& key, float tileSize);
+  static std::pair<int,int> computeTileIndices(const Position& pos, float tileSize);
 };
 
 #endif // QTPLANET_CARTESIANCOORDINATES_H

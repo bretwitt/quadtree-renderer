@@ -79,7 +79,6 @@ void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
         if (neededTiles.find(it->first) == neededTiles.end()) {
             delete it->second;
             it = tiles.erase(it);
-            // dirtyTiles.erase(it->second);
         } else {
             ++it;
         }

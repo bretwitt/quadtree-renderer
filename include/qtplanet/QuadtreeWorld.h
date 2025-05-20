@@ -7,30 +7,6 @@
 #include <cmath>
 #include <iostream>
 
-//---------------------------------------------------------------------
-// A helper structure to uniquely identify a tile by its grid indices.
-//---------------------------------------------------------------------
-struct TileKey {
-    int x;
-    int y;
-    
-    bool operator==(const TileKey& other) const {
-        return x == other.x && y == other.y;
-    }
-};
-
-// Provide a hash function for TileKey so it can be used in an unordered_map.
-namespace std {
-    template <>
-    struct hash<TileKey> {
-        std::size_t operator()(const TileKey& key) const {
-            std::size_t hx = std::hash<int>()(key.x);
-            std::size_t hy = std::hash<int>()(key.y);
-            return hx ^ (hy << 1);
-        }
-    };
-}
-
 // Forward declarations for types used in getAllMeshes().
 // Make sure these types (QuadTree and Mesh) are defined elsewhere.
 template <typename T, typename CoordSystem>
@@ -74,8 +50,6 @@ public:
 
     float getElevation(float x, float y);
     std::unordered_map<TileKey, QuadtreeTile<Cartesian>*> getTiles() { return tiles; };
-
-    //std::unordered_set<QuadtreeTile*> getDirtyTiles() { return dirtyTiles; };
 
 
     void deformVertex(float x, float y, float dz);

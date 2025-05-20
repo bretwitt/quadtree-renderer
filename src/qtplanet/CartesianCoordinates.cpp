@@ -173,3 +173,13 @@ float CoordinateTraits<Cartesian>::getElevation(
     }
     return (weight > 0.f) ? (sum / weight) : base;
 }
+
+std::pair<int,int> CoordinateTraits<Cartesian>::computeTileIndices(const Position& pos, float tileSize) {
+    return { static_cast<int>(std::floor(pos.x/tileSize)),
+             static_cast<int>(std::floor(pos.y/tileSize)) };
+}
+
+std::pair<float,float> CoordinateTraits<Cartesian>::tileCenterPosition(const TileKey& key, float tileSize) {
+    return { key.x*tileSize + tileSize*0.5f,
+             key.y*tileSize + tileSize*0.5f };
+}

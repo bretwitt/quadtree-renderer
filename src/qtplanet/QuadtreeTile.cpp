@@ -162,7 +162,6 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata>* node,
 
     }
 
-
     if (distance < effectiveSplitThreshold && level < 5) {  
         if (!node->isDivided()) {
             node->subdivide();
@@ -321,8 +320,6 @@ float QuadtreeTile<CoordSystem>::computeBaseElevation(CoordSystem::Position pos)
     }
 }
 
-
-
 template<typename CoordSystem>
 void QuadtreeTile<CoordSystem>::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
     int level = node->getLevel();
@@ -402,8 +399,6 @@ void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
         float* normal = &mesh.normals[3 * i];
         normalize(normal);
     }
-
-
 }
 
 template<typename CoordSystem>
