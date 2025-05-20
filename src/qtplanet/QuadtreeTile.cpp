@@ -271,8 +271,8 @@ void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
     }
 }
 
-
-void QuadtreeTile::deformVertex(Cartesian::Position pos, float dz)
+template<typename CoordSystem>
+void QuadtreeTile::deformVertex(typename CoordinateTraits<CoordSystem>::Position pos, float dz)
 {
     QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
     if (!leaf) {
@@ -357,10 +357,11 @@ float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
 }
 
 
+
 float QuadtreeTile::getElevation(Cartesian::Position pos) {
     float baseElevation = computeBaseElevation(pos);
 
-    QuadTree<TileMetadata>* leafNode = findLeafNode(tree, pos);
+    QuadTree<TileMetadata, CoordinateTraits<Cartesian>>* leafNode = findLeafNode<CoordinateTraits<Cartesian>::Position>(tree, pos);
     if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
 
     const TileMetadata* metadata = leafNode->getType();
@@ -371,9 +372,7 @@ float QuadtreeTile::getElevation(Cartesian::Position pos) {
     const float influenceRadius = 1e-1f;
 
     for (const auto& dp : metadata->dirtyVertices) {
-        float dx = pos.x - dp.x;
-        float dy = pos.y - dp.y;
-        float distance = std::sqrt(dx * dx + dy * dy);  
+        float distance = CoordinateTraits<Cartesian>::distance(pos,{dp.x,dp.y});
 
         if(distance < influenceRadius) {
             float weight = 1.0f/(distance);
@@ -385,8 +384,8 @@ float QuadtreeTile::getElevation(Cartesian::Position pos) {
     return (totalWeight > 0.0f) ? weightedSum / totalWeight : baseElevation;
 }
 
-
-QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node, Cartesian::Position pos) {
+template<typename CoordSystem>
+QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata, CoordSystem>* node, typename CoordinateTraits<CoordSystem>::Position pos) {
     if (!node)
         return nullptr;
 
@@ -415,83 +414,58 @@ QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata>* node,
     return findLeafNode(node->getSouthwestNonConst(), pos);
 }
 
-void QuadtreeTile::updateMesh(QuadTree<TileMetadata>* node) {
+template<typename CoordSystem>
+void QuadtreeTile::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
     int level = node->getLevel();
     QuadTree<TileMetadata>::Boundary childBounds = node->getBoundary();
 
     // Generate the mesh for the child.
-    Mesh mesh = generateTriangularMesh({childBounds.x, childBounds.y, childBounds.width, childBounds.height}, level);
+    Mesh mesh = generateTriangularMesh<CoordSystem>(childBounds, level);
     bucketMeshes[node] = mesh;
 }
 
-Mesh QuadtreeTile::generateTriangularMesh(Cartesian::Boundary bounds, int level)
+template<typename CoordSystem>
+Mesh QuadtreeTile::generateTriangularMesh(typename CoordinateTraits<CoordSystem>::Boundary bounds, int level)
 {
     Mesh mesh;
 
-    int divisions = 1 << (level + 1); // 2^(level + 1)
+    int divisions = 1 << (level + 1);
     int numVerticesPerSide = divisions + 1;
 
-    float stepX = (2.0f * bounds.width) / divisions;
-    float stepY = (2.0f * bounds.height) / divisions;
+    for (int j = 0; j < numVerticesPerSide; ++j) {
+        for (int i = 0; i < numVerticesPerSide; ++i) {
+            auto [x, y] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions);
+            float z = getElevation({x, y}); //TODO: this is dumb, wont work on polar
 
-    float startX = bounds.x - bounds.width;
-    float startY = bounds.y - bounds.height;
-
-    // -------------------------------------------------------
-    // 1) Generate the fine mesh vertices and texture coordinates.
-    // -------------------------------------------------------
-    for (int j = 0; j < numVerticesPerSide; ++j)
-    {
-        for (int i = 0; i < numVerticesPerSide; ++i)
-        {
-            float x = startX + i * stepX;
-            float y = startY + j * stepY;
-            float z = getElevation( {x, y} );
-
-            // Push back position (x, y, z)
             mesh.vertices.push_back(x);
             mesh.vertices.push_back(y);
             mesh.vertices.push_back(z);
 
-            // Compute and push back texture coordinates (u, v) in [0,1].
-            float u = static_cast<float>(i) / divisions; 
+            float u = static_cast<float>(i) / divisions;
             float v = static_cast<float>(j) / divisions;
             mesh.texCoords.push_back(u);
             mesh.texCoords.push_back(v);
         }
     }
 
-    // -------------------------------------------------------
-    // 2) Generate indices for a triangular mesh.
-    // -------------------------------------------------------
-    for (int j = 0; j < divisions; ++j)
-    {
-        for (int i = 0; i < divisions; ++i)
-        {
+    for (int j = 0; j < divisions; ++j) {
+        for (int i = 0; i < divisions; ++i) {
             int topLeft     =  j      * numVerticesPerSide + i;
             int topRight    =  topLeft + 1;
             int bottomLeft  = (j + 1) * numVerticesPerSide + i;
             int bottomRight =  bottomLeft + 1;
 
-            // First triangle
             mesh.indices.push_back(topLeft);
             mesh.indices.push_back(bottomLeft);
             mesh.indices.push_back(topRight);
 
-            // Second triangle
             mesh.indices.push_back(topRight);
             mesh.indices.push_back(bottomLeft);
             mesh.indices.push_back(bottomRight);
         }
     }
 
-
-    // -------------------------------------------------------
-    // 4) Compute vertex normals based on the positions and indices.
-    // -------------------------------------------------------
     calculateNormals(mesh);
-    // calculateCoarseNormals(mesh);
-
     return mesh;
 }
 

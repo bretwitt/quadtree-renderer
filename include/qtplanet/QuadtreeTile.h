@@ -65,7 +65,8 @@ public:
     void tick();
     void tickLeaves(QuadTree<TileMetadata>* node);
 
-    void deformVertex(Cartesian::Position pos, float dz);
+    template<typename CoordSystem>
+    void deformVertex(typename CoordinateTraits<CoordSystem>::Position pos, float dz);
 
     QuadTree<TileMetadata>* getTree() const;
     std::unordered_map<QuadTree<TileMetadata>*, Mesh> getMeshes();
@@ -99,10 +100,13 @@ private:
     // Called when a bucket (node) is unloaded.
     void onUnloadBucket(QuadTree<TileMetadata>* node);
 
-    void updateMesh(QuadTree<TileMetadata>* node);
+
+    template<typename CoordSystem>
+    void updateMesh(QuadTree<TileMetadata, CoordSystem>* node);
 
 
-    QuadTree<TileMetadata>* findLeafNode(QuadTree<TileMetadata>* node, Cartesian::Position pos);
+    template<typename CoordSystem>
+    QuadTree<TileMetadata>* findLeafNode(QuadTree<TileMetadata, CoordSystem>* node, typename CoordinateTraits<CoordSystem>::Position pos);
 
     /**
      * Generates a triangular mesh for the tile.
@@ -110,7 +114,9 @@ private:
      * The elevation for each vertex is computed using either the GeoTIFF data
      * (if available) or Perlin noise.
      */
-    Mesh generateTriangularMesh(Cartesian::Boundary bounds, int level);
+
+    template<typename CoordSystem>
+    Mesh generateTriangularMesh(typename CoordinateTraits<CoordSystem>::Boundary bounds, int level);
 
     // Cross product helper.
     static inline void cross(const float* a, const float* b, float* result);

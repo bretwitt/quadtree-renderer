@@ -143,7 +143,7 @@ void QuadtreeWorld::deformVertex(float x, float y, float dz) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
 
-        it->second->deformVertex({x, y}, dz);
+        it->second->deformVertex<Cartesian>({x,y}, dz);
         // auto _it = std::find(dirtyTiles.begin(),dirtyTiles.end(), it->second);
         // dirtyTiles.insert(it->second);
 

@@ -7,6 +7,7 @@
 /*
 *   Define coord systems
 */
+
 struct Cartesian {
     struct Position {
         float x,y;
@@ -15,7 +16,7 @@ struct Cartesian {
         float x, y, width, height;
     };
 };
-struct Polar {
+struct Polar { 
     struct Position {
         float lon, lat;
     };
@@ -43,10 +44,8 @@ struct CoordinateTraits;
 */
 template<>
 struct CoordinateTraits<Cartesian> {
-    using Boundary = Cartesian::Boundary;
-    using Position = Cartesian::Position;
 
-    static QuadTreeChildBounds<Cartesian> getChildBounds(const Boundary& b) {
+    static QuadTreeChildBounds<Cartesian> getChildBounds(const Cartesian::Boundary& b) {
         QuadTreeChildBounds<Cartesian> children;
         float hw = b.width / 2.0f;
         float hh = b.height / 2.0f;
@@ -59,7 +58,7 @@ struct CoordinateTraits<Cartesian> {
         return children;
     }
 
-    static bool contains(const Boundary& b, float x, float y) {
+    static bool contains(const Cartesian::Boundary& b, float x, float y) {
         float left = b.x - b.width;
         float right = b.x + b.width;
         float top = b.y - b.height;
@@ -67,14 +66,14 @@ struct CoordinateTraits<Cartesian> {
         return (x >= left && x <= right && y >= top && y <= bottom);
     }
 
-    static float distanceTo(const Boundary& b, float x, float y, float z, float elevation) {
+    static float distanceTo(const Cartesian::Boundary& b, float x, float y, float z, float elevation) {
         float dx = std::max(std::abs(x - b.x) - b.width, 0.0f);
         float dy = std::max(std::abs(y - b.y) - b.height, 0.0f);
         float dz = elevation - z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    static std::array<Boundary, 4> subdivide(const Boundary& b) {
+    static std::array<Cartesian::Boundary, 4> subdivide(const Cartesian::Boundary& b) {
         float hw = b.width / 2.0f;
         float hh = b.height / 2.0f;
         return {{
@@ -90,13 +89,20 @@ struct CoordinateTraits<Cartesian> {
         float dy = pos2.y - pos1.y;
         return std::sqrt(dx*dx + dy*dy);
     }
+
+    static std::pair<float, float> cartesianAt(const Cartesian::Boundary& b, int i, int j, int divisions) {
+        float stepX = (2.0f * b.width) / divisions;
+        float stepY = (2.0f * b.height) / divisions;
+        float startX = b.x - b.width;
+        float startY = b.y - b.height;
+        return { startX + i * stepX, startY + j * stepY };
+    }
 };
 
 template<>
 struct CoordinateTraits<Polar> {
-    using Boundary = Polar::Boundary;
 
-    static QuadTreeChildBounds<Polar> getChildBounds(const Boundary& b) {
+    static QuadTreeChildBounds<Polar> getChildBounds(const Polar::Boundary& b) {
         QuadTreeChildBounds<Polar> children;
         float halfDR = b.dr / 2.0f;
         float halfDTheta = b.dtheta / 2.0f;
@@ -107,6 +113,18 @@ struct CoordinateTraits<Polar> {
         children.bounds[3] = { b.r - halfDR, b.theta - halfDTheta, halfDR, halfDTheta }; // Inner-left
 
         return children;
+    }
+
+    static std::pair<float, float> cartesianAt(const Polar::Boundary& b, int i, int j, int divisions) {
+        float dr = b.dr / divisions;
+        float dTheta = b.dtheta / divisions;
+
+        float r = b.r - b.dr / 2 + j * dr;
+        float theta = b.theta - b.dtheta / 2 + i * dTheta;
+
+        float x = r * std::cos(theta);
+        float y = r * std::sin(theta);
+        return { x, y };
     }
 };
 
