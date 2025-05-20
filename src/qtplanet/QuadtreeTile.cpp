@@ -10,7 +10,7 @@
 QuadtreeTile::QuadtreeTile(Cartesian::Boundary b, GeoTIFFLoader* geoLoader)
     : geoTIFFLoader(geoLoader)
 {
-    tree = new QuadTree<TileMetadata>(b);
+    tree = new QuadTree<TileMetadata,Cartesian>(b);
     
     // Set up callbacks.
     tree->nodeInitCallback = [this](QuadTree<TileMetadata>* node) {
@@ -271,39 +271,6 @@ void QuadtreeTile::onUnloadBucket(QuadTree<TileMetadata>* node) {
     }
 }
 
-template<typename CoordSystem>
-void QuadtreeTile::deformVertex(typename CoordinateTraits<CoordSystem>::Position pos, float dz)
-{
-    QuadTree<TileMetadata>* leaf = findLeafNode(tree, pos);
-    if (!leaf) {
-        return;
-    }
-    
-    // Retrieve the tile’s metadata.
-    TileMetadata* metadata = leaf->getType();
-    
-    // Instead of initializing a full grid from the mesh,
-    // we simply check whether there is already a deformed point near (x,y).
-    const int level = leaf->getLevel();
-    const float baseThreshold = 0.05f; // adjust this base value as needed
-    bool updated = false;
-    for (auto& dp : metadata->dirtyVertices) {
-        float dist = CoordinateTraits<Cartesian>::distance({dp.x,dp.y}, pos);
-        if (dist < baseThreshold) {
-            dp.z += dz;
-            updated = true;
-            break;
-        }
-    }
-    
-    if (!updated) {
-        // No existing dirty point is nearby, so add a new one.
-        vec3 newPoint{pos.x,pos.y,computeBaseElevation(pos)+dz};
-        metadata->dirtyVertices.push_back(newPoint);
-    }
-
-    updateMesh(leaf);   
-}
 
 float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
     if (geoTIFFLoader) {
@@ -361,7 +328,7 @@ float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
 float QuadtreeTile::getElevation(Cartesian::Position pos) {
     float baseElevation = computeBaseElevation(pos);
 
-    QuadTree<TileMetadata, CoordinateTraits<Cartesian>>* leafNode = findLeafNode<CoordinateTraits<Cartesian>::Position>(tree, pos);
+    QuadTree<TileMetadata, Cartesian>* leafNode = findLeafNode<Cartesian>(tree, pos);
     if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
 
     const TileMetadata* metadata = leafNode->getType();
@@ -384,89 +351,15 @@ float QuadtreeTile::getElevation(Cartesian::Position pos) {
     return (totalWeight > 0.0f) ? weightedSum / totalWeight : baseElevation;
 }
 
-template<typename CoordSystem>
-QuadTree<TileMetadata>* QuadtreeTile::findLeafNode(QuadTree<TileMetadata, CoordSystem>* node, typename CoordinateTraits<CoordSystem>::Position pos) {
-    if (!node)
-        return nullptr;
-
-    // Get the node’s boundary.
-    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
-    float left   = boundary.x - boundary.width;
-    float right  = boundary.x + boundary.width;
-    float top    = boundary.y - boundary.height;
-    float bottom = boundary.y + boundary.height;
-
-    // If (x,y) lies outside this node, return nullptr.
-    if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
-        return nullptr;
-
-    // If not divided, this is the leaf.
-    if (!node->isDivided())
-        return node;
-
-    // Otherwise, search the children.
-    QuadTree<TileMetadata>* found = findLeafNode(node->getNortheastNonConst(), pos);
-    if (found) return found;
-    found = findLeafNode(node->getNorthwestNonConst(), pos);
-    if (found) return found;
-    found = findLeafNode(node->getSoutheastNonConst(), pos);
-    if (found) return found;
-    return findLeafNode(node->getSouthwestNonConst(), pos);
-}
 
 template<typename CoordSystem>
 void QuadtreeTile::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
     int level = node->getLevel();
-    QuadTree<TileMetadata>::Boundary childBounds = node->getBoundary();
+    typename CoordSystem::Boundary childBounds = node->getBoundary();
 
     // Generate the mesh for the child.
     Mesh mesh = generateTriangularMesh<CoordSystem>(childBounds, level);
     bucketMeshes[node] = mesh;
-}
-
-template<typename CoordSystem>
-Mesh QuadtreeTile::generateTriangularMesh(typename CoordinateTraits<CoordSystem>::Boundary bounds, int level)
-{
-    Mesh mesh;
-
-    int divisions = 1 << (level + 1);
-    int numVerticesPerSide = divisions + 1;
-
-    for (int j = 0; j < numVerticesPerSide; ++j) {
-        for (int i = 0; i < numVerticesPerSide; ++i) {
-            auto [x, y] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions);
-            float z = getElevation({x, y}); //TODO: this is dumb, wont work on polar
-
-            mesh.vertices.push_back(x);
-            mesh.vertices.push_back(y);
-            mesh.vertices.push_back(z);
-
-            float u = static_cast<float>(i) / divisions;
-            float v = static_cast<float>(j) / divisions;
-            mesh.texCoords.push_back(u);
-            mesh.texCoords.push_back(v);
-        }
-    }
-
-    for (int j = 0; j < divisions; ++j) {
-        for (int i = 0; i < divisions; ++i) {
-            int topLeft     =  j      * numVerticesPerSide + i;
-            int topRight    =  topLeft + 1;
-            int bottomLeft  = (j + 1) * numVerticesPerSide + i;
-            int bottomRight =  bottomLeft + 1;
-
-            mesh.indices.push_back(topLeft);
-            mesh.indices.push_back(bottomLeft);
-            mesh.indices.push_back(topRight);
-
-            mesh.indices.push_back(topRight);
-            mesh.indices.push_back(bottomLeft);
-            mesh.indices.push_back(bottomRight);
-        }
-    }
-
-    calculateNormals(mesh);
-    return mesh;
 }
 
 
