@@ -164,7 +164,7 @@ float QuadtreeWorld::getElevation(float x, float y) {
     auto it = tiles.find(key);
     if (it != tiles.end()) {
         // Forward the deformation to the tile.
-        return it->second->getElevation({x,y});
+        return it->second->getElevation<Cartesian>({x,y});
         
     } else {
         return -1;

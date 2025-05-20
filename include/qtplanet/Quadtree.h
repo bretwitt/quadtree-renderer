@@ -99,10 +99,10 @@ public:
 
         auto childBounds = Traits::getChildBounds(boundary);
 
-        northeast = new QuadTree(childBounds.bounds[0], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        northwest = new QuadTree(childBounds.bounds[1], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southeast = new QuadTree(childBounds.bounds[2], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
-        southwest = new QuadTree(childBounds.bounds[3], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        northeast = new QuadTree(childBounds[0], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        northwest = new QuadTree(childBounds[1], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southeast = new QuadTree(childBounds[2], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
+        southwest = new QuadTree(childBounds[3], type, childLevel, nodeInitCallback, nodeDestroyCallback, nodeSplitCallback, nodeMergeCallback, this);
 
         divided = true;
 

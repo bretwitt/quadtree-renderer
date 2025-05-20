@@ -59,6 +59,7 @@
         // Destructor: cleans up the allocated QuadTree.
         ~QuadtreeTile();
 
+
         void updateLOD(float cameraX, float cameraY, float cameraZ,
                     float splitThreshold, float mergeThreshold, int& subdivisions);
 
@@ -110,7 +111,9 @@
         * coordinates using the geotransform and returns the elevation from the raster data.
         * Otherwise, it falls back to generating elevation using Perlin noise.
         */
-        float getElevation(Cartesian::Position pos);
+        template<typename CoordSystem>
+        float getElevation(typename CoordSystem::Position pos);
+
         float computeBaseElevation(Cartesian::Position pos);
         void deduplicateVertices(std::vector<vec3>& vertices);
 
@@ -118,6 +121,7 @@
 
     private:
         // Recursive function to update level-of-detail.
+        template<typename CoordSystem>
         void updateLODRec(QuadTree<TileMetadata>* node,
                         float cameraX, float cameraY, float cameraZ,
                         float splitThreshold, float mergeThreshold,
@@ -137,42 +141,11 @@
 
 
         // Search down from any CoordSystem–typed tree to find the leaf containing pos.
-        // template<typename CoordSystem>
-        // QuadTree<TileMetadata, CoordSystem>* findLeafNode( QuadTree<TileMetadata, CoordSystem>* node,
-        //            typename CoordinateTraits<CoordSystem>::Position pos );
-
         template<typename CoordSystem>
         QuadTree<TileMetadata, CoordSystem>* findLeafNode( 
                         QuadTree<TileMetadata, CoordSystem>* node,
-                        typename CoordSystem::Position pos ) 
-        {
-            if (!node)
-                return nullptr;
+                        typename CoordSystem::Position pos );
 
-            // Get the node’s boundary.
-            QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
-            float left   = boundary.x - boundary.width;
-            float right  = boundary.x + boundary.width;
-            float top    = boundary.y - boundary.height;
-            float bottom = boundary.y + boundary.height;
-
-            // If (x,y) lies outside this node, return nullptr.
-            if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
-                return nullptr;
-
-            // If not divided, this is the leaf.
-            if (!node->isDivided())
-                return node;
-
-            // Otherwise, search the children.
-            QuadTree<TileMetadata>* found = findLeafNode<Cartesian>(node->getNortheastNonConst(), pos);
-            if (found) return found;
-            found = findLeafNode(node->getNorthwestNonConst(), pos);
-            if (found) return found;
-            found = findLeafNode(node->getSoutheastNonConst(), pos);
-            if (found) return found;
-            return findLeafNode(node->getSouthwestNonConst(), pos);
-        }
 
         /**
         * Generates a triangular mesh for the tile.
@@ -181,58 +154,17 @@
         * (if available) or Perlin noise.
         */
         template<typename CoordSystem>
-        Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
-        {
-            Mesh mesh;
+        Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level);
 
-            int divisions = 1 << (level + 1);
-            int numVerticesPerSide = divisions + 1;
-
-            for (int j = 0; j < numVerticesPerSide; ++j) {
-                for (int i = 0; i < numVerticesPerSide; ++i) {
-                    auto [x, y] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions);
-                    float z = getElevation({x, y}); //TODO: this is dumb, wont work on polar
-
-                    mesh.vertices.push_back(x);
-                    mesh.vertices.push_back(y);
-                    mesh.vertices.push_back(z);
-
-                    float u = static_cast<float>(i) / divisions;
-                    float v = static_cast<float>(j) / divisions;
-                    mesh.texCoords.push_back(u);
-                    mesh.texCoords.push_back(v);
-                }
-            }
-
-            for (int j = 0; j < divisions; ++j) {
-                for (int i = 0; i < divisions; ++i) {
-                    int topLeft     =  j      * numVerticesPerSide + i;
-                    int topRight    =  topLeft + 1;
-                    int bottomLeft  = (j + 1) * numVerticesPerSide + i;
-                    int bottomRight =  bottomLeft + 1;
-
-                    mesh.indices.push_back(topLeft);
-                    mesh.indices.push_back(bottomLeft);
-                    mesh.indices.push_back(topRight);
-
-                    mesh.indices.push_back(topRight);
-                    mesh.indices.push_back(bottomLeft);
-                    mesh.indices.push_back(bottomRight);
-                }
-            }
-
-            calculateNormals(mesh);
-            return mesh;
-        }
         // Cross product helper.
         static inline void cross(const float* a, const float* b, float* result);
 
         // Normalize helper.
         static inline void normalize(float* v);
 
+        // Estimate normals for the mesh.
         void calculateNormals(Mesh& mesh);
 
-        // Pointer to the underlying QuadTree.
 
         QuadTree<TileMetadata, Cartesian>* tree;
         // Mapping from a quadtree node to its mesh.

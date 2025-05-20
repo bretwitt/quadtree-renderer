@@ -39,7 +39,7 @@ QuadtreeTile::~QuadtreeTile() {
 void QuadtreeTile::updateLOD(float cameraX, float cameraY, float cameraZ,
                              float splitThreshold, float mergeThreshold, int& subdivisions)
 {
-    updateLODRec(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
+    updateLODRec<Cartesian>(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
 }
 
 QuadTree<TileMetadata>* QuadtreeTile::getTree() const {
@@ -99,6 +99,8 @@ size_t QuadtreeTile::getMemoryUsage() const {
 // ------------------------------
 // Private Methods
 // ------------------------------
+
+template<typename CoordSystem>
 void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
                                 float cameraX, float cameraY, float cameraZ,
                                 float splitThreshold, float mergeThreshold,
@@ -112,27 +114,10 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
     float top    = boundary.y - boundary.height;
     float bottom = boundary.y + boundary.height;
 
-    // Compute horizontal (dx) and vertical (dy) distances from the camera to the boundary.
-    //float dx = 0.0f;
-    //if (cameraX < left)
-    //    dx = left - cameraX;
-    //else if (cameraX > right)
-    //    dx = cameraX - right;
-
-    //float dy = 0.0f;
-    //if (cameraY < top)
-    //    dy = top - cameraY;
-    //else if (cameraY > bottom)
-    //    dy = cameraY - bottom;
-    
-    //float dz = getElevation(boundary.x, boundary.y) - cameraZ; 
-
-    //float distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
-
-    float distance = CoordinateTraits<Cartesian>::distanceTo
+    float distance = CoordinateTraits<CoordSystem>::distanceTo
             (
                 boundary, cameraX, cameraY, cameraZ, 
-                getElevation( {boundary.x,boundary.y })
+                getElevation<CoordSystem>( {boundary.x,boundary.y })
             );
 
     int level = node->getLevel();
@@ -176,13 +161,13 @@ void QuadtreeTile::updateLODRec(QuadTree<TileMetadata>* node,
             subdivisions++; 
         }
         if (node->isDivided()) {
-            updateLODRec(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec<Cartesian>(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec<Cartesian>(node->getNorthwestNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec<Cartesian>(node->getSoutheastNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
-            updateLODRec(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ,
+            updateLODRec<Cartesian>(node->getSouthwestNonConst(), cameraX, cameraY, cameraZ,
                            splitThreshold, mergeThreshold, subdivisions);
         }
     }
@@ -323,12 +308,11 @@ float QuadtreeTile::computeBaseElevation(Cartesian::Position pos) {
     }
 }
 
-
-
-float QuadtreeTile::getElevation(Cartesian::Position pos) {
+template<typename CoordSystem>
+float QuadtreeTile::getElevation(typename CoordSystem::Position pos) {
     float baseElevation = computeBaseElevation(pos);
 
-    QuadTree<TileMetadata, Cartesian>* leafNode = findLeafNode<Cartesian>(tree, pos);
+    QuadTree<TileMetadata, Cartesian>* leafNode = findLeafNode<CoordSystem>(tree, pos);
     if (!leafNode) return baseElevation; // Return base elevation if no leaf exists.
 
     const TileMetadata* metadata = leafNode->getType();
@@ -339,7 +323,7 @@ float QuadtreeTile::getElevation(Cartesian::Position pos) {
     const float influenceRadius = 1e-1f;
 
     for (const auto& dp : metadata->dirtyVertices) {
-        float distance = CoordinateTraits<Cartesian>::distance(pos,{dp.x,dp.y});
+        float distance = CoordinateTraits<CoordSystem>::distance(pos,{dp.x,dp.y});
 
         if(distance < influenceRadius) {
             float weight = 1.0f/(distance);
@@ -363,9 +347,6 @@ void QuadtreeTile::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
 }
 
 
-// ------------------------------
-// Inline Helper Functions
-// ------------------------------
 void QuadtreeTile::cross(const float* a, const float* b, float* result) {
     result[0] = a[1] * b[2] - a[2] * b[1];
     result[1] = a[2] * b[0] - a[0] * b[2];
@@ -432,4 +413,94 @@ void QuadtreeTile::calculateNormals(Mesh& mesh)
         float* normal = &mesh.normals[3 * i];
         normalize(normal);
     }
+
+
 }
+
+template<typename CoordSystem>
+Mesh QuadtreeTile::generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
+{
+    Mesh mesh;
+
+    int divisions = 1 << (level + 1);
+    int numVerticesPerSide = divisions + 1;
+
+    for (int j = 0; j < numVerticesPerSide; ++j) {
+        for (int i = 0; i < numVerticesPerSide; ++i) {
+            auto [x, y] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions);
+            float z = getElevation<CoordSystem>({x, y}); //TODO: this is dumb, wont work on polar
+
+            mesh.vertices.push_back(x);
+            mesh.vertices.push_back(y);
+            mesh.vertices.push_back(z);
+
+            float u = static_cast<float>(i) / divisions;
+            float v = static_cast<float>(j) / divisions;
+            mesh.texCoords.push_back(u);
+            mesh.texCoords.push_back(v);
+        }
+    }
+
+    for (int j = 0; j < divisions; ++j) {
+        for (int i = 0; i < divisions; ++i) {
+            int topLeft     =  j      * numVerticesPerSide + i;
+            int topRight    =  topLeft + 1;
+            int bottomLeft  = (j + 1) * numVerticesPerSide + i;
+            int bottomRight =  bottomLeft + 1;
+
+            mesh.indices.push_back(topLeft);
+            mesh.indices.push_back(bottomLeft);
+            mesh.indices.push_back(topRight);
+
+            mesh.indices.push_back(topRight);
+            mesh.indices.push_back(bottomLeft);
+            mesh.indices.push_back(bottomRight);
+        }
+    }
+
+    calculateNormals(mesh);
+    return mesh;
+}
+
+template<typename CoordSystem>
+QuadTree<TileMetadata, CoordSystem>* QuadtreeTile::findLeafNode( 
+                QuadTree<TileMetadata, CoordSystem>* node,
+                typename CoordSystem::Position pos ) 
+{
+    if (!node)
+        return nullptr;
+
+    // Get the node’s boundary.
+    QuadTree<TileMetadata>::Boundary boundary = node->getBoundary();
+    float left   = boundary.x - boundary.width;
+    float right  = boundary.x + boundary.width;
+    float top    = boundary.y - boundary.height;
+    float bottom = boundary.y + boundary.height;
+
+    // If (x,y) lies outside this node, return nullptr.
+    if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
+        return nullptr;
+
+    // If not divided, this is the leaf.
+    if (!node->isDivided())
+        return node;
+
+    // Otherwise, search the children.
+    QuadTree<TileMetadata>* found = findLeafNode<CoordSystem>(node->getNortheastNonConst(), pos);
+    if (found) return found;
+    found = findLeafNode(node->getNorthwestNonConst(), pos);
+    if (found) return found;
+    found = findLeafNode(node->getSoutheastNonConst(), pos);
+    if (found) return found;
+    return findLeafNode(node->getSouthwestNonConst(), pos);
+}
+
+/*
+ * Explicit template instantiation for Cartesian coordinate system.
+*/
+template Mesh QuadtreeTile::generateTriangularMesh<Cartesian>(Cartesian::Boundary, int);
+template QuadTree<TileMetadata, Cartesian>* QuadtreeTile::findLeafNode( 
+                QuadTree<TileMetadata, Cartesian>* node,
+                typename Cartesian::Position pos );
+template float QuadtreeTile::getElevation<Cartesian>(Cartesian::Position pos);
+template void QuadtreeTile::updateMesh<Cartesian>(QuadTree<TileMetadata, Cartesian>* node);
