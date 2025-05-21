@@ -32,6 +32,11 @@ QuadtreeWorld::~QuadtreeWorld() {
 //---------------------------------------------------------------------
 
 void QuadtreeWorld::update(float cameraX, float cameraY, float cameraZ) {
+    
+    this->cameraX = cameraX;
+    this->cameraY = cameraY;
+    this->cameraZ = cameraZ;
+    
     const float baseHeight = -0.0f; // Adjust this as needed.
         const int minViewRange = 10;
     const int maxViewRange = 30;
@@ -144,4 +149,9 @@ float QuadtreeWorld::getElevation(float x, float y) {
     } else {
         return -1;
     }
+}
+
+std::pair<float, float> QuadtreeWorld::getCameraPositionLonLat() const {
+    auto [ lon, lat ] = CoordinateTraits<Spherical>::projectXYZToLatLon(cameraX, cameraY, cameraZ);
+    return { lon, lat };
 }

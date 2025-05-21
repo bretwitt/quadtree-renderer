@@ -53,17 +53,27 @@ public:
 
 
     void deformVertex(float x, float y, float dz);
+
+    // Returns the camera's latitude and longitude.
+    std::pair<float, float> getCameraPositionLonLat() const;
+
 private:
     float tileSize;              // Size of each square tile.
     int viewRangeInTiles;        // Number of tiles to keep active in each direction.
     float splitThreshold;        // Base threshold for splitting quadtree nodes.
     float mergeThreshold;        // Base threshold for merging quadtree nodes.
 
+    float cameraX;            // Camera's X position.
+    float cameraY;            // Camera's Y position.
+    float cameraZ;            // Camera's Z position.
+
     // A mapping from a grid key to a pointer to a QuadtreeTile.
     std::unordered_map<TileKey, QuadtreeTile<Spherical>*> tiles;
     //std::unordered_set<QuadtreeTile*> dirtyTiles;
 
     GeoTIFFLoader loader;
+
+
 };
 
 #endif // QUADTREE_WORLD_H

@@ -38,8 +38,8 @@ void main()
 
     float distanceFactor = clamp(distance / maxDist, 0.0, 1.0);
 
-    float morphFac = distanceFactor; //*splitTicks;
-
+    //float morphFac = distanceFactor; //*splitTicks;
+    float morphFac = 0;
     vec3 morphPos = mix(aPos, aCoarse, morphFac);
 
     vec4 worldPos = model * vec4(morphPos, 1.0);

@@ -29,6 +29,8 @@ QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, GeoTIF
         this->onNewBucket(node);
         this->onMerge(node);
     };
+
+    // onNewBucket(tree);
 }
 
 template<typename CoordSystem>
@@ -131,42 +133,24 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
 
     int level = node->getLevel();
 
-    float effectiveSplitThreshold = splitThreshold / (level + 1);
-    float effectiveMergeThreshold = mergeThreshold / (level + 1);
+    double radius = 100.0;
 
-    if (level == 0) {
-        effectiveSplitThreshold = 1200.f;
-        effectiveMergeThreshold = 1200.f;
+    splitThreshold = radius * 1.;
+    mergeThreshold = radius * 0.1;
 
-    }
-    if (level == 1) {
-        effectiveSplitThreshold = 20.f;
-        effectiveMergeThreshold = 20.f;
+    double effectiveSplitThreshold = splitThreshold / (level + 1);
+    double effectiveMergeThreshold = mergeThreshold / (level + 1);
+    
 
-    }
-    if (level == 2) {
-        effectiveSplitThreshold = 10.f;
-        effectiveMergeThreshold = 10.f;
-    }
-    if (level == 3) {
-        effectiveSplitThreshold = 2.f;
-        effectiveMergeThreshold = 2.f;
+    if (std::abs(node->getBoundary().y) + node->getBoundary().height >= 85.0f) {
+        return;
     }
 
-    if (level == 4) {
-        effectiveSplitThreshold = 0.5f;
-        effectiveMergeThreshold = 0.5f;
-    }
-    if (level == 5) {
-        effectiveSplitThreshold = 0.1f;
-        effectiveMergeThreshold = 0.1f;
-
-    }
-
-    if (distance < effectiveSplitThreshold && level < 5) {  
+    if (distance < effectiveSplitThreshold && level < 4) {  
         if (!node->isDivided()) {
             node->subdivide();
             subdivisions++; 
+            onUnloadBucket(node);
         }
         if (node->isDivided()) {
             updateLODRec(node->getNortheastNonConst(), cameraX, cameraY, cameraZ,
@@ -179,7 +163,7 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
                            splitThreshold, mergeThreshold, subdivisions);
         }
     }
-    else if (distance > effectiveMergeThreshold) {
+    else if (distance > effectiveMergeThreshold ) {
         if (node->isDivided()) {
             node->merge();
         }
@@ -188,7 +172,9 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
 
 template<typename CoordSystem>
 void QuadtreeTile<CoordSystem>::onNewBucket(QuadTree<TileMetadata,CoordSystem>* node) {
-    updateMesh(node);
+    // if (!node->isDivided()) {
+        updateMesh(node);
+    // }
 }
 
 
@@ -282,10 +268,10 @@ if (geoTIFFLoader == nullptr) {
 template<typename CoordSystem>
 void QuadtreeTile<CoordSystem>::updateMesh(QuadTree<TileMetadata, CoordSystem>* node) {
     int level = node->getLevel();
-    typename CoordSystem::Boundary childBounds = node->getBoundary();
+    typename CoordSystem::Boundary bounds = node->getBoundary();
 
     // Generate the mesh for the child.
-    Mesh mesh = generateTriangularMesh(childBounds, level);
+    Mesh mesh = generateTriangularMesh(bounds, level);
     bucketMeshes[node] = mesh;
 }
 
@@ -360,10 +346,80 @@ void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
     }
 }
 
+// template<typename CoordSystem>
+// Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(
+//     typename CoordSystem::Boundary bounds,
+//     int level)
+// {
+//     Mesh mesh;
+
+//     // how many quads per side?
+//     int divisions = 1 << (level + 1);
+//     // number of grid points per side
+//     int N = divisions + 1;
+
+//     mesh.vertices.reserve(3 * N * N);
+//     mesh.texCoords.reserve(2 * N * N);
+//     mesh.indices.reserve(6 * divisions * divisions);
+
+//     // helper to round to a fixed grid (here: millimeter precision)
+//     auto quant = [](float v) {
+//       return std::round(v * 1000.0f) / 1000.0f;
+//     };
+
+//     // 1) Build the vertex + UV list
+//     for (int j = 0; j < N; ++j) {
+//         for (int i = 0; i < N; ++i) {
+//             // Ask your CoordSystem for its cartesian coords + elevation
+//             auto [x0, y0, z0] =
+//                 CoordinateTraits<CoordSystem>::cartesianAt(
+//                     bounds, i, j, divisions, tree, geoTIFFLoader);
+
+//             // Quantize to kill tiny fp differences on shared edges
+//             mesh.vertices.push_back(quant(x0));
+//             mesh.vertices.push_back(quant(y0));
+//             mesh.vertices.push_back(quant(z0));
+
+//             // Simple [0..1] UVs
+//             mesh.texCoords.push_back(float(i) / divisions);
+//             mesh.texCoords.push_back(float(j) / divisions);
+//         }
+//     }
+
+//     // 2) Build the full quad grid (no skipping!)
+//     //    Each cell [i,j] produces two triangles
+//     for (int j = 0; j < divisions; ++j) {
+//         for (int i = 0; i < divisions; ++i) {
+//             int topLeft     =  j      * N + i;
+//             int topRight    =  topLeft + 1;
+//             int bottomLeft  = (j + 1) * N + i;
+//             int bottomRight = bottomLeft + 1;
+
+//             mesh.indices.push_back(topLeft);
+//             mesh.indices.push_back(bottomLeft);
+//             mesh.indices.push_back(topRight);
+
+//             mesh.indices.push_back(topRight);
+//             mesh.indices.push_back(bottomLeft);
+//             mesh.indices.push_back(bottomRight);
+//         }
+//     }
+
+//     // 3) Recompute smooth normals
+//     calculateNormals(mesh);
+//     return mesh;
+// }
+
+
 template<typename CoordSystem>
 Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
 {
     Mesh mesh;
+
+    // auto quant = [](float v) {
+    //     // snap to millimeter grid
+    //     return std::round(v * 1000.0f) / 1000.0f;
+    // };
 
     int divisions = 1 << (level + 1);
     int numVerticesPerSide = divisions + 1;
@@ -372,9 +428,9 @@ Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Bou
         for (int i = 0; i < numVerticesPerSide; ++i) {
             auto [x, y, z] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions, tree, geoTIFFLoader);
 
-            mesh.vertices.push_back(x);
-            mesh.vertices.push_back(y);
-            mesh.vertices.push_back(z);
+            mesh.vertices.push_back( (x) );
+            mesh.vertices.push_back( (y) );
+            mesh.vertices.push_back( (z) );
 
             float u = static_cast<float>(i) / divisions;
             float v = static_cast<float>(j) / divisions;

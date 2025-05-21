@@ -142,6 +142,8 @@ void Application::run()
 
         qt_world.update(camera.Position.x, camera.Position.y, camera.Position.z);
 
+        auto [lon,lat] = qt_world.getCameraPositionLonLat();
+
         processInput();
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -160,6 +162,10 @@ void Application::run()
             ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
             ImGui::Text("Camera Position: (%.2f, %.2f, %.2f)",
                         camera.Position.x, camera.Position.y, camera.Position.z);
+            ImGui::Text("Camera Latitude: %.2f", lat);
+            ImGui::Text("Camera Longitude: %.2f", lon);
+            // ImGui::Text("Camera Elevation: %.2f", qt_world.getElevation(camera.Position.x, camera.Position.y));
+
 
             // ----------------------------------------------------------------
             // Tile and memory statistics (you might need to implement these)

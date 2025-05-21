@@ -44,6 +44,7 @@ namespace Perlin {
         return ((h & 1) ? -u : u) + ((h & 2) ? -2.0f * v : 2.0f * v);
     }
 
+
     // 2D Perlin noise. Returns a noise value in roughly the range [-1, 1].
     inline float noise(float x, float y) {
         int X = static_cast<int>(std::floor(x)) & 255;
@@ -64,6 +65,22 @@ namespace Perlin {
                          lerp(u, grad(permutation[(A + 1) & 255], x, y - 1),
                                  grad(permutation[(B + 1) & 255], x - 1, y - 1)));
         return res;
+    }
+
+        // ------------------------------------------------------------
+    // Helper: Perlin on a sphere using only 2‑D noise
+    //   dir = unit vector (x,y,z) on the globe
+    //   freq = features per Earth diameter   (~4–10 is a good start)
+    // ------------------------------------------------------------
+    inline float perlinOnSphere2D(const std::tuple<float,float,float>& dir, float freq)
+    {
+        // Sample noise in the three coordinate planes
+        float nXY = noise(std::get<0>(dir) * freq, std::get<1>(dir) * freq);
+        float nYZ = noise(std::get<1>(dir) * freq, std::get<2>(dir) * freq);
+        float nZX = noise(std::get<2>(dir) * freq, std::get<0>(dir)* freq);
+
+        // Simple average keeps amplitude in ‑1 … +1
+        return (nXY + nYZ + nZX) * (1.0f / 3.0f);
     }
 } // namespace Perlin
 
