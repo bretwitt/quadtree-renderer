@@ -31,40 +31,74 @@ bool CoordinateTraits<Spherical>::contains(const Boundary& b, float lon, float l
 float CoordinateTraits<Spherical>::distanceToBounds(
     const Boundary& b,
     float camX, float camY, float camZ,
-    float tileElev
-) {
-    double r = std::sqrt(camX * camX + camY * camY + camZ * camZ);
-    float camElev = static_cast<float>(r - kEarthRadiusMeters);
+    float tileElev)
+{
+    // 1) Clamp lon/lat to the tile rectangle
+    auto [camLon, camLat] = projectXYZToLatLon(camX, camY, camZ);
+    float clampedLat = std::clamp(camLat, b.y - b.height, b.y + b.height);
+    float deltaLonRaw = wrapLongitude(camLon - b.x);
+    float clampedDeltaLon = std::clamp(deltaLonRaw, -b.width, b.width);
+    float clampedLon = wrapLongitude(b.x + clampedDeltaLon);
 
-    float s = camZ / r;
-    s = std::clamp(s, -1.0f, 1.0f);
-    float camLat = radiansToDegrees(std::asin(s));
-    float camLon = wrapLongitude(radiansToDegrees(std::atan2(camY, camX)));
+    // 2) Convert that clamped point back into 3D on the sphere+tile elevation
+    double radLon = degreesToRadians(clampedLon);
+    double radLat = degreesToRadians(clampedLat);
+    double rSurf  = double(kEarthRadiusMeters) + tileElev;
+    double bx = rSurf * std::cos(radLat) * std::cos(radLon);
+    double by = rSurf * std::cos(radLat) * std::sin(radLon);
+    double bz = rSurf * std::sin(radLat);
 
-    return distanceToBoundsLatLon(b, camLon, camLat, camElev, tileElev);
+    // 3) Straight‐line (chord) distance in 3D
+    double dx = camX - bx;
+    double dy = camY - by;
+    double dz = camZ - bz;
+    return static_cast<float>(std::sqrt(dx*dx + dy*dy + dz*dz));
 }
+
+
+
+// float CoordinateTraits<Spherical>::distanceToBounds(
+//     const Boundary& b,
+//     float camX, float camY, float camZ,
+//     float tileElev
+// ) {
+//     // double r = std::sqrt(camX * camX + camY * camY + camZ * camZ);
+//     // float camElev = static_cast<float>(r - kEarthRadiusMeters);
+
+//     // float s = camZ / r;
+//     // s = std::clamp(s, -1.0f, 1.0f);
+//     // float camLat = radiansToDegrees(std::asin(s));
+//     // float camLon = wrapLongitude(radiansToDegrees(std::atan2(camY, camX)));
+
+//     // use projectXYZToLatLon instead
+//     auto [ camLon, camLat ] = projectXYZToLatLon(camX, camY, camZ);
+//     auto camElev = getElevationFromXYZ(camX, camY, camZ);
+
+//     return distanceToBoundsLatLon(b, camLon, camLat, camElev, tileElev);
+// }
 
 float CoordinateTraits<Spherical>::distanceToBoundsLatLon(
     const Boundary& b,
     float lon, float lat,
-    float cz, float elevation
-) {
-    float deltaLon = wrapLongitude(lon - b.x);
-    float excessLon = 0.0f;
-    if (deltaLon > b.width)        excessLon = deltaLon - b.width;
-    else if (deltaLon < -b.width)  excessLon = -b.width - deltaLon;
-    float metersLon = degreesToRadians(excessLon) * kEarthRadiusMeters;
+    float camElev, float elevation)
+{
+    // 1) Find the nearest point on the rectangle [b.x±b.width]×[b.y±b.height]
+    float clampedLat = std::clamp(lat, b.y - b.height, b.y + b.height);
+    float deltaLonRaw = wrapLongitude(lon - b.x);
+    float clampedDeltaLon = std::clamp(deltaLonRaw, -b.width, b.width);
+    float clampedLon = wrapLongitude(b.x + clampedDeltaLon);
 
-    float deltaLat = lat - b.y;
-    float excessLat = 0.0f;
-    if (deltaLat > b.height)       excessLat = deltaLat - b.height;
-    else if (deltaLat < -b.height) excessLat = -b.height - deltaLat;
-    float metersLat = degreesToRadians(excessLat) * kEarthRadiusMeters;
+    // 2) Great-circle distance on sphere of radius R+elevation
+    double effectiveR = double(kEarthRadiusMeters) + elevation;
+    float horizontal = haversineDistance(lon, lat, clampedLon, clampedLat)
+                     * static_cast<float>(effectiveR);
 
-    float dz = elevation - cz;
+    // 3) Vertical difference
+    float dz = camElev - elevation;
 
-    return std::sqrt(metersLon * metersLon + metersLat * metersLat + dz * dz);
+    return std::sqrt(horizontal*horizontal + dz*dz);
 }
+
 
 std::array<Spherical::Boundary, 4>
 CoordinateTraits<Spherical>::subdivide(const Boundary& b) {
@@ -119,8 +153,12 @@ float CoordinateTraits<Spherical>::computeBaseElevation(
     double originLat = gt[3];
     double pixelHeight = gt[5];
 
-    double colF = CoordinateTraits<Spherical>::wrapLongitude(pos.lat - originLon) / pixelWidth;
-    double rowF = (pos.lon - originLat) / pixelHeight;
+    // Compute the pixel coordinates of the position
+
+    // double colF = CoordinateTraits<Spherical>::wrapLongitude(pos.lon - originLon) / pixelWidth;
+    // double rowF = (pos.lat - originLat) / pixelHeight;
+    double colF = (pos.lon - originLon) / pixelWidth;
+    double rowF = (originLat - pos.lat) / std::abs(pixelHeight);
 
     int col0 = static_cast<int>(floor(colF));
     int row0 = static_cast<int>(floor(rowF));
@@ -149,11 +187,11 @@ float CoordinateTraits<Spherical>::computeBaseElevation(
     
     /* ---------- Isotropic 2‑D Perlin on the sphere --------- */
     auto dir = dirFromLonLat(pos.lon, pos.lat);   // helper from previous reply
-    constexpr float freq       = 8.0f;          // tweak for coarser/finer bumps
-    constexpr float amplitude  = 5.0f;          // metres
+    constexpr float freq       = 20.0f;          // tweak for coarser/finer bumps
+    constexpr float amplitude  = 20.0f;          // metres
     float noise = Perlin::perlinOnSphere2D(dir, freq) * amplitude;
 
-    return interpValue + 0.7f * noise;
+    return interpValue;// + 0.7f * noise;
     // return 200.0;
 }
 

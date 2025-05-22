@@ -19,6 +19,7 @@ void GeoTIFFLoader::load(const std::string& filename) {
         throw std::runtime_error("Failed to open GeoTIFF file: " + filename);
     }
     
+
     // Retrieve the raster dimensions.
     width  = poDataset->GetRasterXSize();
     height = poDataset->GetRasterYSize();
@@ -57,6 +58,7 @@ void GeoTIFFLoader::load(const std::string& filename) {
     
     // Close the dataset.
     GDALClose(poDataset);
+    std::cout << "Loaded GeoTIFF file: " << filename << std::endl;
 }
 
 int GeoTIFFLoader::getWidth() const {

@@ -51,11 +51,12 @@ public:
     float getElevation(float x, float y);
     std::unordered_map<TileKey, QuadtreeTile<Spherical>*> getTiles() { return tiles; };
 
-
     void deformVertex(float x, float y, float dz);
 
     // Returns the camera's latitude and longitude.
     std::pair<float, float> getCameraPositionLonLat() const;
+
+    float getCameraPositionElevation() const;
 
 private:
     float tileSize;              // Size of each square tile.

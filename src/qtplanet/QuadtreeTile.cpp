@@ -31,6 +31,7 @@ QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, GeoTIF
     };
 
     // onNewBucket(tree);
+
 }
 
 template<typename CoordSystem>
@@ -120,33 +121,49 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
     // Retrieve the node's boundary.
     typename CoordSystem::Boundary boundary = node->getBoundary();
 
-    float left   = boundary.x - boundary.width;
-    float right  = boundary.x + boundary.width;
-    float top    = boundary.y - boundary.height;
-    float bottom = boundary.y + boundary.height;
 
     float distance = CoordinateTraits<CoordSystem>::distanceToBounds
         (
-            boundary, cameraX, cameraY, cameraZ, 
+            boundary, cameraX, cameraY, cameraZ, //0
             getElevation( {boundary.x,boundary.y })
         );
 
+    // std::cout << "Distance: " << distance << std::endl;
+
     int level = node->getLevel();
 
-    double radius = 100.0;
+    double radius = 1000.0;
 
-    splitThreshold = radius * 1.;
+    splitThreshold = radius * 250.0f;
     mergeThreshold = radius * 0.1;
 
-    double effectiveSplitThreshold = splitThreshold / (level + 1);
+    // double effectiveSplitThreshold = splitThreshold / (level + 1);
     double effectiveMergeThreshold = mergeThreshold / (level + 1);
+
+    // effectiveSplitThreshold and effectiveMergeThreshold table
+    // define mergetable
+    std::array<std::pair<int, float>, 6> mergeTable = 
+    {
+        std::make_pair(0, 2000.0f),
+        std::make_pair(1, 500.0f),
+        std::make_pair(2, 250.0f),
+        std::make_pair(3, 50.0f),
+        std::make_pair(4, 0.25f),
+        std::make_pair(5, 0.10f)
+    };
+    
+    float effectiveSplitThreshold = mergeTable[level].second;
     
 
-    if (std::abs(node->getBoundary().y) + node->getBoundary().height >= 85.0f) {
-        return;
-    }
+    // std::cout << "Level : " << level << std::endl;
 
-    if (distance < effectiveSplitThreshold && level < 4) {  
+    // if (std::abs(node->getBoundary().y) + node->getBoundary().height >= 85.0f) {
+    //     return;
+    // }
+    if (std::abs(boundary.y) + boundary.height >= 85.0f)
+        return;
+
+    if (((distance < effectiveSplitThreshold) && level < 4)) {  
         if (!node->isDivided()) {
             node->subdivide();
             subdivisions++; 
@@ -346,71 +363,6 @@ void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
     }
 }
 
-// template<typename CoordSystem>
-// Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(
-//     typename CoordSystem::Boundary bounds,
-//     int level)
-// {
-//     Mesh mesh;
-
-//     // how many quads per side?
-//     int divisions = 1 << (level + 1);
-//     // number of grid points per side
-//     int N = divisions + 1;
-
-//     mesh.vertices.reserve(3 * N * N);
-//     mesh.texCoords.reserve(2 * N * N);
-//     mesh.indices.reserve(6 * divisions * divisions);
-
-//     // helper to round to a fixed grid (here: millimeter precision)
-//     auto quant = [](float v) {
-//       return std::round(v * 1000.0f) / 1000.0f;
-//     };
-
-//     // 1) Build the vertex + UV list
-//     for (int j = 0; j < N; ++j) {
-//         for (int i = 0; i < N; ++i) {
-//             // Ask your CoordSystem for its cartesian coords + elevation
-//             auto [x0, y0, z0] =
-//                 CoordinateTraits<CoordSystem>::cartesianAt(
-//                     bounds, i, j, divisions, tree, geoTIFFLoader);
-
-//             // Quantize to kill tiny fp differences on shared edges
-//             mesh.vertices.push_back(quant(x0));
-//             mesh.vertices.push_back(quant(y0));
-//             mesh.vertices.push_back(quant(z0));
-
-//             // Simple [0..1] UVs
-//             mesh.texCoords.push_back(float(i) / divisions);
-//             mesh.texCoords.push_back(float(j) / divisions);
-//         }
-//     }
-
-//     // 2) Build the full quad grid (no skipping!)
-//     //    Each cell [i,j] produces two triangles
-//     for (int j = 0; j < divisions; ++j) {
-//         for (int i = 0; i < divisions; ++i) {
-//             int topLeft     =  j      * N + i;
-//             int topRight    =  topLeft + 1;
-//             int bottomLeft  = (j + 1) * N + i;
-//             int bottomRight = bottomLeft + 1;
-
-//             mesh.indices.push_back(topLeft);
-//             mesh.indices.push_back(bottomLeft);
-//             mesh.indices.push_back(topRight);
-
-//             mesh.indices.push_back(topRight);
-//             mesh.indices.push_back(bottomLeft);
-//             mesh.indices.push_back(bottomRight);
-//         }
-//     }
-
-//     // 3) Recompute smooth normals
-//     calculateNormals(mesh);
-//     return mesh;
-// }
-
-
 template<typename CoordSystem>
 Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Boundary bounds, int level)
 {
@@ -432,10 +384,45 @@ Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Bou
             mesh.vertices.push_back( (y) );
             mesh.vertices.push_back( (z) );
 
-            float u = static_cast<float>(i) / divisions;
-            float v = static_cast<float>(j) / divisions;
+            // World position of this vertex in longitude/latitude (in degrees)
+            // float lonMin = bounds.x - bounds.width;
+            // float lonMax = bounds.x + bounds.width;
+            // float latMin = bounds.y - bounds.height;
+            // float latMax = bounds.y + bounds.height;
+
+            // float lon = lonMin + (lonMax - lonMin) * (static_cast<float>(i) / divisions);
+            // float lat = latMin + (latMax - latMin) * (static_cast<float>(j) / divisions);
+            // // How many times you want the texture to tile across the full globe
+            // float tileRepeatU = 32.0f; // horizontal repeats (along longitude)
+            // float tileRepeatV = 8.0f;  // vertical repeats (along latitude)
+
+            // // Convert longitude [-180,180] to U, then scale by repeat count
+            // float u = ((lon + 180.0f) / 360.0f) * tileRepeatU;
+            // float v = ((lat +  90.0f) / 180.0f) * tileRepeatV;
+            // mesh.texCoords.push_back(u);
+            // mesh.texCoords.push_back(v);
+
+            float lonMin = bounds.x - bounds.width;
+            float lonMax = bounds.x + bounds.width;
+            float latMin = bounds.y - bounds.height;
+            float latMax = bounds.y + bounds.height;
+
+            // Assumes a texture mapped over the whole globe
+            // Longitude from -180 to 180 → map to U: 0.0 to 1.0
+            // Latitude from -90 to 90   → map to V: 0.0 to 1.0
+
+            float lon = lonMin + (lonMax - lonMin) * (static_cast<float>(i) / divisions);
+            float lat = latMin + (latMax - latMin) * (static_cast<float>(j) / divisions);
+
+            float u = (lon + 180.0f) / 360.0f;
+            float v = (lat + 90.0f) / 180.0f;
+
             mesh.texCoords.push_back(u);
             mesh.texCoords.push_back(v);
+
+
+
+
         }
     }
 

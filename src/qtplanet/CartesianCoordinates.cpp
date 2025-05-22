@@ -106,10 +106,11 @@ float CoordinateTraits<Cartesian>::computeBaseElevation(
         }
         // add Perlin noise
         float alpha     = 0.7f;
-        float frequency = 0.1f;
+        float frequency = 1.0f;
         float amplitude = 0.25f;
         float noise     = Perlin::noise(pos.x * frequency, pos.y * frequency) * amplitude;
         return interpolated + alpha * noise;
+        
     } else {
         // pure noise if no GeoTIFF
         return Perlin::noise(pos.x * 0.1, pos.y * 0.1);

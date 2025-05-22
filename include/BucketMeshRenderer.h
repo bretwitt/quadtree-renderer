@@ -24,7 +24,13 @@ public:
     std::unordered_map<QuadTree<TileMetadata,Spherical>*, GPU_Mesh> gpuMeshMap;
 
     GLuint terrainTextureID = 0;
-    BucketMeshRenderer() {}
+    BucketMeshRenderer() {
+
+        // Load the texture
+        if (!loadTexture("../resources/lroc_color_poles_1k.jpg")) {
+            std::cerr << "Failed to load texture" << std::endl;
+        }
+    }
     ~BucketMeshRenderer() {
         for (auto& pair : gpuMeshMap) {
             glDeleteVertexArrays(1, &pair.second.VAO);
@@ -35,6 +41,35 @@ public:
     float computeTriangleArea(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2) {
         return 0.5f * glm::length(glm::cross(v1 - v0, v2 - v0));
     }
+
+    bool loadTexture(const std::string& path) {
+        glGenTextures(1, &terrainTextureID);
+        glBindTexture(GL_TEXTURE_2D, terrainTextureID);
+
+        // Texture parameters
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        int width, height, nrChannels;
+        stbi_set_flip_vertically_on_load(true); // Optional: flip if needed
+        unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrChannels, 0);
+
+        if (data) {
+            GLenum format = (nrChannels == 3) ? GL_RGB : GL_RGBA;
+            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+        } else {
+            std::cerr << "Failed to load texture: " << path << std::endl;
+            return false;
+        }
+        stbi_image_free(data);
+        return true;
+    }
+
 
     void updateMesh(QuadTree<TileMetadata,Spherical>* key, const Mesh& mesh) {
         GPU_Mesh gpuMesh;
@@ -58,8 +93,8 @@ public:
         // Fine grid: (2^(level+1)) + 1 vertices per side.
         // Parent grid: (2^(level)) + 1 vertices per side.
         int level = key->getLevel() + 1;
-        int fineSide = (1 << (level)) + 1;
-        int parentSide = (1 << (level - 1)) + 1;
+        int fineSide = (1 << (level + 0)) + 1;
+        int parentSide = (1 << (level + 1)) + 1;
 
         for (size_t i = 0; i < vertexCount; i++) {
             // Position (3 floats)
@@ -180,10 +215,10 @@ public:
         glUseProgram(shaderProgram);
         GLint colorLoc = glGetUniformLocation(shaderProgram, "levelColor");
 
-
-        // glActiveTexture(GL_TEXTURE0);
-        // glBindTexture(GL_TEXTURE_2D, terrainTextureID);
-
+        // BIND TEXTURE
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, terrainTextureID);
+        
         // Let the shader know which texture unit to use (0).
         GLint textureLoc = glGetUniformLocation(shaderProgram, "terrainTexture");
         glUniform1i(textureLoc, 0);

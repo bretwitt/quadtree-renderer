@@ -15,7 +15,7 @@ const float DEFAULT_HEIGHT_SCALE = 10.0f;
 Application::Application(int width, int height, const char* title)
     : SCR_WIDTH(width), SCR_HEIGHT(height), windowTitle(title), window(nullptr),
       shader(nullptr), heightfield(nullptr), 
-      camera(glm::vec3(-100.0f, -100.0f, -0.0f)), 
+      camera(glm::vec3(-1000.0f, -1000.0f, -0.0f)), 
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
@@ -143,6 +143,7 @@ void Application::run()
         qt_world.update(camera.Position.x, camera.Position.y, camera.Position.z);
 
         auto [lon,lat] = qt_world.getCameraPositionLonLat();
+        auto camElev = qt_world.getCameraPositionElevation();
 
         processInput();
 
@@ -164,6 +165,7 @@ void Application::run()
                         camera.Position.x, camera.Position.y, camera.Position.z);
             ImGui::Text("Camera Latitude: %.2f", lat);
             ImGui::Text("Camera Longitude: %.2f", lon);
+            ImGui::Text("Camera Elevation: %.2f", camElev);
             // ImGui::Text("Camera Elevation: %.2f", qt_world.getElevation(camera.Position.x, camera.Position.y));
 
 
@@ -280,6 +282,10 @@ void Application::processInput()
         camera.ProcessKeyboard(DOWN, deltaTime);
     if(glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(UP, deltaTime);
+    if(glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
+        camera.ProcessRoll(-6.);
+    if(glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
+        camera.ProcessRoll(6);
 
 
     if(glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
@@ -339,7 +345,7 @@ void Application::processInput()
             glm::radians(camera.Zoom),
             static_cast<float>(SCR_WIDTH) / static_cast<float>(SCR_HEIGHT),
             0.1f,
-            1200.0f
+            20000.0f
         );
         glm::vec4 viewport(0.0f, 0.0f, SCR_WIDTH, SCR_HEIGHT);
         

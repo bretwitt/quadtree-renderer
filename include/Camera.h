@@ -3,8 +3,10 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
 
-// Defines possible camera movement directions.
+// Camera movement directions
 enum Camera_Movement {
     FORWARD,
     BACKWARD,
@@ -14,39 +16,44 @@ enum Camera_Movement {
     DOWN
 };
 
-// Default camera values for a Z-up system.
-// Here, we set YAW to 0 so that with zero pitch the camera faces along the positive X-axis.
-const float YAW         = 0.0f;   
-const float PITCH       = 0.0f;   // 0 degrees means level (no tilt up or down)
-const float SPEED       = 10.0f;
+// Default camera constants
+const float YAW         = 0.0f;
+const float PITCH       = 0.0f;
+const float ROLL        = 0.0f;
+const float SPEED       = 100.0f;
 const float SENSITIVITY = 0.05f;
-const float ZOOM        = 45.0f;  // (unused in this modified version)
+const float ZOOM        = 45.0f;
 
-class Camera
-{
+class Camera {
 public:
-    // Camera Attributes
+    // Camera orientation
+    glm::quat Orientation;
+
+    // Camera attributes
     glm::vec3 Position;
     glm::vec3 Front;
     glm::vec3 Up;
     glm::vec3 Right;
     glm::vec3 WorldUp;
-    // Euler Angles
+
+    // Euler angles
     float Yaw;
     float Pitch;
+    float Roll;
+
     // Camera options
     float MovementSpeed;
     float MouseSensitivity;
-    float Zoom;  // (left in case you want to use it for something else)
+    float Zoom;
 
-    // Constructor with vectors.
-    // Note: The default up vector is now (0, 0, 1) to make Z the upward direction.
+    // Constructor
     Camera(
         glm::vec3 position = glm::vec3(0.0f, 50.0f, 100.0f),
         glm::vec3 up       = glm::vec3(0.0f, 0.0f, 1.0f),
         float yaw          = YAW,
-        float pitch        = PITCH
-    ) : Front(glm::vec3(1.0f, 0.0f, 0.0f)),  // With yaw=0 and pitch=0, the camera looks along +X.
+        float pitch        = PITCH,
+        float roll         = ROLL
+    ) : Front(glm::vec3(1.0f, 0.0f, 0.0f)),
         MovementSpeed(SPEED),
         MouseSensitivity(SENSITIVITY),
         Zoom(ZOOM)
@@ -55,90 +62,61 @@ public:
         WorldUp = up;
         Yaw = yaw;
         Pitch = pitch;
+        Roll = roll;
+
+        Orientation = glm::quat(glm::vec3(glm::radians(Pitch), glm::radians(Yaw), glm::radians(Roll)));
         updateCameraVectors();
     }
 
-    // Returns the view matrix calculated using LookAt.
-    glm::mat4 GetViewMatrix()
-    {
+    // Returns the view matrix using LookAt
+    glm::mat4 GetViewMatrix() {
         return glm::lookAt(Position, Position + Front, Up);
     }
 
-    // Processes keyboard input.
-    void ProcessKeyboard(Camera_Movement direction, float deltaTime)
-    {
+    // Processes keyboard input
+    void ProcessKeyboard(Camera_Movement direction, float deltaTime) {
         float velocity = MovementSpeed * deltaTime;
-        if (direction == FORWARD)
-            Position += Front * velocity;
-        if (direction == BACKWARD)
-            Position -= Front * velocity;
-        if (direction == LEFT)
-            Position -= Right * velocity;
-        if (direction == RIGHT)
-            Position += Right * velocity;
-        if (direction == UP)
-            Position += WorldUp * velocity;
-        if (direction == DOWN)
-            Position -= WorldUp * velocity;
+        if (direction == FORWARD)  Position += Front * velocity;
+        if (direction == BACKWARD) Position -= Front * velocity;
+        if (direction == LEFT)     Position -= Right * velocity;
+        if (direction == RIGHT)    Position += Right * velocity;
+        if (direction == UP)       Position += Up * velocity;
+        if (direction == DOWN)     Position -= Up * velocity;
     }
 
-    // Processes mouse movement input.
-    void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true)
-    {
-        xoffset *= -MouseSensitivity;
+
+    void ProcessMouseMovement(float xoffset, float yoffset) {
+        xoffset *= MouseSensitivity;
         yoffset *= MouseSensitivity;
 
-        Yaw   += xoffset;
-        Pitch += yoffset;
+        glm::quat pitchQuat = glm::angleAxis(glm::radians(-yoffset), Right); // Local pitch
+        glm::quat yawQuat   = glm::angleAxis(glm::radians(-xoffset), Up);    // Local yaw
 
-        // Constrain the pitch angle to prevent flipping.
-        if (constrainPitch)
-        {
-            if (Pitch > 89.0f)
-                Pitch = 89.0f;
-            if (Pitch < -89.0f)
-                Pitch = -89.0f;
-        }
-
-        // Update Front, Right, and Up vectors.
+        Orientation = glm::normalize(yawQuat * pitchQuat * Orientation);
         updateCameraVectors();
     }
 
-    // Processes mouse scroll input to adjust movement speed.
-    // Scrolling up (positive yoffset) increases the speed,
-    // while scrolling down (negative yoffset) decreases it.
-    void ProcessMouseScroll(float yoffset)
-    {
-        // Adjust the movement speed by the scroll offset.
+    // Processes mouse scroll input for speed adjustment
+    void ProcessMouseScroll(float yoffset) {
         MovementSpeed += yoffset;
-        
-        // Clamp the speed to a reasonable range.
-        if (MovementSpeed < 0.05f)
-            MovementSpeed = 0.05f;
-        if (MovementSpeed > 100.0f)
-            MovementSpeed = 100.0f;
+        MovementSpeed = glm::clamp(MovementSpeed, 0.05f, 100.0f);
+    }
+
+    // Processes roll input (in degrees)
+    void ProcessRoll(float rollOffset, float deltaTime = 0.1f) {
+        float angle = glm::radians(rollOffset * deltaTime);
+        glm::quat rollQuat = glm::angleAxis(angle, Front);
+        Orientation = glm::normalize(rollQuat * Orientation);
+        updateCameraVectors();
     }
 
 private:
-    // Updates the camera's vectors based on the updated Euler angles.
-    // In a Z-up coordinate system, the standard formulas become:
-    //    front.x = cos(yaw) * cos(pitch)
-    //    front.y = sin(yaw) * cos(pitch)
-    //    front.z = sin(pitch)
-    void updateCameraVectors()
-    {
-        glm::vec3 front;
-        front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-        front.y = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-        front.z = sin(glm::radians(Pitch));
-        Front = glm::normalize(front);
-
-        // Recalculate Right and Up vectors.
-        // Right vector: perpendicular to both Front and WorldUp.
-        Right = glm::normalize(glm::cross(Front, WorldUp));
-        // Up vector: perpendicular to both Right and Front.
-        Up = glm::normalize(glm::cross(Right, Front));
+    // Updates the camera's direction vectors based on orientation quaternion
+    void updateCameraVectors() {
+        Front = glm::normalize(Orientation * glm::vec3(0.0f, 0.0f, -1.0f));
+        Right = glm::normalize(Orientation * glm::vec3(1.0f, 0.0f, 0.0f));
+        Up    = glm::normalize(glm::cross(Right, Front));
     }
 };
 
-#endif
+#endif // CAMERA_H

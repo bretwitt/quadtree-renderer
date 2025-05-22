@@ -125,6 +125,9 @@ private:
                     QuadTree<TileMetadata, CoordSystem>* node,
                     typename CoordSystem::Position pos );
 
+    enum Direction { North, South, East, West };
+
+    QuadTree<TileMetadata,CoordSystem>*  getNeighbor( QuadTree<TileMetadata,CoordSystem>* node, Direction dir);
 
     /**
     * Generates a triangular mesh for the tile.
@@ -132,6 +135,7 @@ private:
     * The elevation for each vertex is computed using either the GeoTIFF data
     * (if available) or Perlin noise.
     */
+    // Mesh generateTriangularMesh(QuadTree<TileMetadata,CoordSystem>* node, typename CoordSystem::Boundary bounds, int level);
     Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level);
 
     // Cross product helper.

@@ -11,7 +11,7 @@
 #include "qtplanet/GeoTIFFLoader.h"
 #include "qtplanet/TileMetadata.h"
 
-const static double kEarthRadiusMeters = 100.0;
+const static double kEarthRadiusMeters = 1000.0;
 const static double kPi = 3.14159265358979323846;
 
 template<>
@@ -60,14 +60,21 @@ public:
     // ---------------------------------------------------------
     static inline std::tuple<float,float,float> dirFromLonLat(float lonDeg, float latDeg)
     {
-        double θ = degreesToRadians(lonDeg);
-        double φ = degreesToRadians(latDeg);
-        double cx = std::cos(φ);
-        return { static_cast<float>(cx * std::cos(θ)),
-                static_cast<float>(cx * std::sin(θ)),
-                static_cast<float>(std::sin(φ)) };
+        double lam = degreesToRadians(lonDeg);
+        double phi = degreesToRadians(latDeg);
+        double cx = std::cos(phi);
+        return { static_cast<float>(cx * std::cos(lam)),
+                static_cast<float>(cx * std::sin(lam)),
+                static_cast<float>(std::sin(phi)) };
     }
 
+    static inline float getElevationFromXYZ(float x, float y, float z) {
+        // Convert to spherical coordinates
+        float r = std::sqrt((x * x) + (y * y) + (z * z));
+        float elevation = r - kEarthRadiusMeters;
+        // std::cout << "Elevation: " << elevation << " " << "Radius " << r << std::endl;
+        return elevation;
+    }
 
     inline static float wrapLongitude(float lon) {
         float shifted = fmod(lon + 180.0f, 360.0f);
@@ -95,7 +102,6 @@ public:
     }
 
 
-
     inline static float haversineDistance(float lon1, float lat1, float lon2, float lat2) {
         float radLat1 = degreesToRadians(lat1);
         float radLat2 = degreesToRadians(lat2);
@@ -121,6 +127,8 @@ public:
         b.x = wrapLongitude(b.x);
         return b;
     }
+
+
 };
 
 #endif // QTPLANET_COORDINATE_TRAITS_SPHERICAL_H
