@@ -39,15 +39,13 @@ void main()
     //----------------------------------------------------------
     // 2. Sample the Terrain Texture
     //----------------------------------------------------------
-    // Use the TexCoords from the vertex shader
     vec4 texColor = texture(terrainTexture, TexCoords);
 
     //----------------------------------------------------------
     // 3. Combine Lighting with Texture
     //----------------------------------------------------------
-    vec3 normColor = norm*0.5+0.5;
     vec3 lighting = ambient + diffuse + specular;
-    vec3 finalColor = lighting; //texColor.rgb * lighting;  // modulate texture color by light
+    vec3 finalColor = texColor.rgb * lighting;
 
     // Output final fragment color
     FragColor = vec4(finalColor, texColor.a);
