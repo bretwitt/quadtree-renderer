@@ -101,7 +101,7 @@ CoordinateTraits<Spherical>::cartesianAt(
     double lon = CoordinateTraits<Spherical>::wrapLongitude(startLon + i * stepLon);
     double lat = startLat + j * stepLat;
 
-    double z = getElevation({ static_cast<double>(lon), static_cast<double>(lat) }, tree, geoLoader, zoomLevel);
+    double z = getElevation({ lon,lat }, tree, geoLoader, zoomLevel);
 
     double radLon = degreesToRadians(lon);
     double radLat = degreesToRadians(lat);
@@ -133,13 +133,13 @@ double CoordinateTraits<Spherical>::computeBaseElevation(
             Perlin::noise(pos.lat * 0.1, pos.lon * 0.1));       // fallback
     
             // moon radius ratio
-    interpValue *= 1000.0; // 1737400m
+    interpValue *= 1.0; // 1737400m
             
 
     /* ---------- Isotropic 2‑D Perlin on the sphere --------- */
     auto dir = dirFromLonLat(pos.lon, pos.lat);   // helper from previous reply
     constexpr double freq       = 20.0;          // tweak for coarser/finer bumps
-    constexpr double amplitude  = 200.0;          // metres
+    constexpr double amplitude  = 1000.0;          // metres
     double noise = Perlin::perlinOnSphere2D(dir, freq) * amplitude;
 
     return interpValue + 0.7f * noise;

@@ -20,8 +20,8 @@ QuadtreeWorld::QuadtreeWorld(double tileSz, int baseViewRange, double splitThr, 
     // loader.load("../resources/WAC_CSHADE_0000N1800_128P_4WEB.tif");
 
     geoMgr = std::make_shared<MultiGeoTIFFManager>();
-    geoMgr->addSource("../resources/ldem_64_fixed.tif",  0,  14);   // 0‑6 : global DEM
-    // geoMgr->addSource("../resources/apollo.tif",         7, 14);   // 7‑14: local 1.5 m DEM
+    geoMgr->addSource("../resources/ldem_64_fixed.tif",  0,  4);   // 0‑6 : global DEM
+    geoMgr->addSource("../resources/apollo.tif",         5, 14);   // 7‑14: local 1.5 m DEM
 }
 
 //---------------------------------------------------------------------

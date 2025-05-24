@@ -111,14 +111,27 @@ inline bool MultiGeoTIFFManager::addSource(const std::string& file,
 }
 
 // --------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 inline std::optional<double>
 MultiGeoTIFFManager::sample(double lonDeg, double latDeg, int zoom) const
 {
-    const Source* src = nullptr;
-    int bestSpan = std::numeric_limits<int>::max();
+    // ------------------------------------------------------------------ ①
+    // Helper that selects the best source among a collection of candidates
+    auto pickBest = [&](const std::vector<const Source*>& cand) -> const Source*
+    {
+        const Source* best = nullptr;
+        int           bestSpan = std::numeric_limits<int>::max();
+        for (const Source* s : cand) {
+            int span = s->maxZoom - s->minZoom;          // prefer narrower range
+            if (span < bestSpan) { bestSpan = span; best = s; }
+        }
+        return best;
+    };
 
+    // ------------------------------------------------------------------ ②
+    // Gather all sources covering the point, split by “contains the zoom”
+    std::vector<const Source*> exact, lower;
     for (const auto& s : sources_) {
-        if (zoom < s.minZoom || zoom > s.maxZoom) continue;
         if (latDeg < s.minLat || latDeg > s.maxLat) continue;
 
         double lonWrap = lonDeg;
@@ -126,18 +139,29 @@ MultiGeoTIFFManager::sample(double lonDeg, double latDeg, int zoom) const
         if (lonWrap > s.maxLon) lonWrap -= 360.0;
         if (lonWrap < s.minLon || lonWrap > s.maxLon) continue;
 
-        int span = s.maxZoom - s.minZoom;
-        if (span < bestSpan) { bestSpan = span; src = &s; }
+        if (zoom >= s.minZoom && zoom <= s.maxZoom)
+            exact.push_back(&s);
+        else if (s.maxZoom < zoom)                      // strictly coarser
+            lower.push_back(&s);
+    }
+
+    // Pick the best exact‑match source first; otherwise best lower‑zoom one.
+    const Source* src = pickBest(exact);
+    if (!src) {
+        // choose the lower‑zoom source whose maxZoom is *closest* below request
+        std::stable_sort(lower.begin(), lower.end(),
+                         [](const Source* a, const Source* b)
+                         { return a->maxZoom > b->maxZoom; });
+        src = pickBest(lower);
     }
     if (!src) return std::nullopt;
 
-    // 1.  Convert query to dataset CRS -------------------------------------
+    // ------------------------------------------------------------------ ③ (unchanged)
     double x = lonDeg, y = latDeg;
     if (!src->isGeographic) {
-        if (!src->toDataset->Transform(1,&x,&y)) return std::nullopt;
+        if (!src->toDataset->Transform(1, &x, &y)) return std::nullopt;
     }
 
-    // 2.  Inverse affine (works for rotation/shear) ------------------------
     const auto& gt = src->loader->getGeoTransform();
     const double det = gt[1]*gt[5] - gt[2]*gt[4];
     if (std::abs(det) < 1e-12) return std::nullopt;
@@ -155,6 +179,6 @@ MultiGeoTIFFManager::sample(double lonDeg, double latDeg, int zoom) const
     double v01 = d[row1*w + col0], v11 = d[row1*w + col1];
 
     double tx = colF - col0, ty = rowF - row0;
-    return double((1-tx)*(1-ty)*v00 + tx*(1-ty)*v10 +
-                 (1-tx)*ty*v01   + tx*ty*v11);
+    return (1-tx)*(1-ty)*v00 + tx*(1-ty)*v10 +
+           (1-tx)*ty*v01   + tx*ty*v11;
 }

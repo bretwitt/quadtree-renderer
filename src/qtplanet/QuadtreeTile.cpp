@@ -145,16 +145,16 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
     // define mergetable
     double r = 1737400.0;
 
-    std::array<std::pair<int, double>, 5> mergeTable = 
+    std::array<std::pair<int, double>, 8> mergeTable = 
     {
 
         std::make_pair(0, r*0.5f),
         std::make_pair(1, r*0.25f),
         std::make_pair(2, r*0.125f),
         std::make_pair(3, r*0.0625f),
-        std::make_pair(4, r*0.03125f),
-        // std::make_pair(5, r*0.03125f),
-        // std::make_pair(6, r*0.015625f),
+        std::make_pair(4, r*0.03125f*0.25f),
+        std::make_pair(5, r*0.015625f*0.25f),
+        std::make_pair(6, r*0.0078125f*0.25f),
         // std::make_pair(7, r*0.0078125f)
     };
     
