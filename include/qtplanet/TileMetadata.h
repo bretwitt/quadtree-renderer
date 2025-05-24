@@ -29,14 +29,14 @@ namespace std {
 }
 
 struct vec3 {
-    vec3(float x, float y, float z) {
+    vec3(double x, double y, double z) {
         this->x = x;
         this->y = y;
         this->z = z;
     }
-    float x = 0;
-    float y = 0;
-    float z = 0;
+    double x = 0;
+    double y = 0;
+    double z = 0;
 };
 
 struct TileMetadata {

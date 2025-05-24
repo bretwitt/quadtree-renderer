@@ -3,13 +3,14 @@
 #include <cstdlib>
 #include <algorithm> 
 #include "qtplanet/CoordinateSystems.h"
+#include "qtplanet/MultiGeoTIFFManager.h"
 
 // ------------------------------
 // Constructor & Destructor
 // ------------------------------
 template<typename CoordSystem>
-QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, GeoTIFFLoader* geoLoader)
-    : geoTIFFLoader(geoLoader)
+QuadtreeTile<CoordSystem>::QuadtreeTile(typename CoordSystem::Boundary b, const std::shared_ptr<MultiGeoTIFFManager>& geoLoader)
+    : geoTIFFLoaderPtr(geoLoader)
 {
     tree = new QuadTree<TileMetadata,CoordSystem>(b);
     
@@ -43,8 +44,8 @@ QuadtreeTile<CoordSystem>::~QuadtreeTile() {
 // Public Methods
 // ------------------------------
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::updateLOD(float cameraX, float cameraY, float cameraZ,
-                             float splitThreshold, float mergeThreshold, int& subdivisions)
+void QuadtreeTile<CoordSystem>::updateLOD(double cameraX, double cameraY, double cameraZ,
+                             double splitThreshold, double mergeThreshold, int& subdivisions)
 {
     updateLODRec(tree, cameraX, cameraY, cameraZ, splitThreshold, mergeThreshold, subdivisions);
 }
@@ -98,9 +99,9 @@ size_t QuadtreeTile<CoordSystem>::getMemoryUsage() const {
     size_t totalMemory = 0;
     for (const auto& bucketMesh : bucketMeshes) {
         const Mesh& mesh = bucketMesh.second;
-        totalMemory += mesh.vertices.capacity() * sizeof(float);
+        totalMemory += mesh.vertices.capacity() * sizeof(double);
         totalMemory += mesh.indices.capacity() * sizeof(int);
-        totalMemory += mesh.normals.capacity() * sizeof(float);
+        totalMemory += mesh.normals.capacity() * sizeof(double);
         totalMemory += mesh.texCoords.capacity() * sizeof(int);
         totalMemory += mesh.coarseNormals.capacity() * sizeof(int);
         
@@ -114,18 +115,18 @@ size_t QuadtreeTile<CoordSystem>::getMemoryUsage() const {
 
 template<typename CoordSystem>
 void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>* node,
-                                float cameraX, float cameraY, float cameraZ,
-                                float splitThreshold, float mergeThreshold,
+                                double cameraX, double cameraY, double cameraZ,
+                                double splitThreshold, double mergeThreshold,
                                 int& subdivisions)
 {
     // Retrieve the node's boundary.
     typename CoordSystem::Boundary boundary = node->getBoundary();
 
 
-    float distance = CoordinateTraits<CoordSystem>::distanceToBounds
+    double distance = CoordinateTraits<CoordSystem>::distanceToBounds
         (
             boundary, cameraX, cameraY, cameraZ, //0
-            getElevation( {boundary.x,boundary.y })
+            getElevation( {boundary.x,boundary.y }, 0)
         );
 
     // std::cout << "Distance: " << distance << std::endl;
@@ -142,17 +143,22 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
 
     // effectiveSplitThreshold and effectiveMergeThreshold table
     // define mergetable
-    std::array<std::pair<int, float>, 6> mergeTable = 
+    double r = 1737400.0;
+
+    std::array<std::pair<int, double>, 5> mergeTable = 
     {
-        std::make_pair(0, 2000.0f),
-        std::make_pair(1, 500.0f),
-        std::make_pair(2, 250.0f),
-        std::make_pair(3, 50.0f),
-        std::make_pair(4, 0.25f),
-        std::make_pair(5, 0.10f)
+
+        std::make_pair(0, r*0.5f),
+        std::make_pair(1, r*0.25f),
+        std::make_pair(2, r*0.125f),
+        std::make_pair(3, r*0.0625f),
+        std::make_pair(4, r*0.03125f),
+        // std::make_pair(5, r*0.03125f),
+        // std::make_pair(6, r*0.015625f),
+        // std::make_pair(7, r*0.0078125f)
     };
     
-    float effectiveSplitThreshold = mergeTable[level].second;
+    double effectiveSplitThreshold = mergeTable[level].second;
     
 
     // std::cout << "Level : " << level << std::endl;
@@ -160,10 +166,10 @@ void QuadtreeTile<CoordSystem>::updateLODRec(QuadTree<TileMetadata,CoordSystem>*
     // if (std::abs(node->getBoundary().y) + node->getBoundary().height >= 85.0f) {
     //     return;
     // }
-    if (std::abs(boundary.y) + boundary.height >= 85.0f)
+    if (std::abs(boundary.y) + boundary.height >= 89.9f)
         return;
 
-    if (((distance < effectiveSplitThreshold) && level < 4)) {  
+    if (((distance < effectiveSplitThreshold) && level < 7)) {  
         if (!node->isDivided()) {
             node->subdivide();
             subdivisions++; 
@@ -234,7 +240,7 @@ void QuadtreeTile<CoordSystem>::deduplicateVertices(std::vector<vec3>& vertices)
     });
 
     vertices.erase(std::unique(vertices.begin(), vertices.end(), [](const vec3& a, const vec3& b) {
-        const float epsilon = 1e-6f;
+        const double epsilon = 1e-6f;
         return (std::fabs(a.x - b.x) < epsilon &&
                 std::fabs(a.y - b.y) < epsilon &&
                 std::fabs(a.z - b.z) < epsilon);
@@ -273,11 +279,11 @@ void QuadtreeTile<CoordSystem>::onUnloadBucket(QuadTree<TileMetadata,CoordSystem
 }
 
 template<typename CoordSystem>
-float QuadtreeTile<CoordSystem>::computeBaseElevation(typename CoordSystem::Position pos) {
-if (geoTIFFLoader == nullptr) {
-        return 0.0f;
+double QuadtreeTile<CoordSystem>::computeBaseElevation(typename CoordSystem::Position pos, int zoomLevel) {
+    if (geoTIFFLoaderPtr == nullptr) {
+        return 0.0;
     }
-    float res = CoordinateTraits<CoordSystem>::computeBaseElevation(pos, geoTIFFLoader);
+    double res = CoordinateTraits<CoordSystem>::computeBaseElevation(pos, geoTIFFLoaderPtr, zoomLevel);
     
     return res;
 }
@@ -293,15 +299,15 @@ void QuadtreeTile<CoordSystem>::updateMesh(QuadTree<TileMetadata, CoordSystem>* 
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::cross(const float* a, const float* b, float* result) {
+void QuadtreeTile<CoordSystem>::cross(const double* a, const double* b, double* result) {
     result[0] = a[1] * b[2] - a[2] * b[1];
     result[1] = a[2] * b[0] - a[0] * b[2];
     result[2] = a[0] * b[1] - a[1] * b[0];
 }
 
 template<typename CoordSystem>
-void QuadtreeTile<CoordSystem>::normalize(float* v) {
-    float length = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+void QuadtreeTile<CoordSystem>::normalize(double* v) {
+    double length = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     if (length > 1e-8f) {
         v[0] /= length;
         v[1] /= length;
@@ -313,7 +319,7 @@ template<typename CoordSystem>
 void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
 {
     const size_t vertexCount = mesh.vertices.size() / 3;
-    mesh.normals.resize(mesh.vertices.size(), 0.0f); // 3 floats per vertex, initialized to 0
+    mesh.normals.resize(mesh.vertices.size(), 0.0f); // 3 doubles per vertex, initialized to 0
 
     // Accumulate face normals.
     for (size_t i = 0; i < mesh.indices.size(); i += 3) {
@@ -321,26 +327,26 @@ void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
         int i1 = mesh.indices[i + 1];
         int i2 = mesh.indices[i + 2];
 
-        float v0[3] = {
+        double v0[3] = {
             mesh.vertices[3 * i0 + 0],
             mesh.vertices[3 * i0 + 1],
             mesh.vertices[3 * i0 + 2]
         };
-        float v1[3] = {
+        double v1[3] = {
             mesh.vertices[3 * i1 + 0],
             mesh.vertices[3 * i1 + 1],
             mesh.vertices[3 * i1 + 2]
         };
-        float v2[3] = {
+        double v2[3] = {
             mesh.vertices[3 * i2 + 0],
             mesh.vertices[3 * i2 + 1],
             mesh.vertices[3 * i2 + 2]
         };
 
-        float e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
-        float e2[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
+        double e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
+        double e2[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
 
-        float faceNormal[3];
+        double faceNormal[3];
         cross(e1, e2, faceNormal);
 
         mesh.normals[3 * i0 + 0] += faceNormal[0];
@@ -358,7 +364,7 @@ void QuadtreeTile<CoordSystem>::calculateNormals(Mesh& mesh)
 
     // Normalize each accumulated normal.
     for (size_t i = 0; i < vertexCount; i++) {
-        float* normal = &mesh.normals[3 * i];
+        double* normal = &mesh.normals[3 * i];
         normalize(normal);
     }
 }
@@ -368,7 +374,7 @@ Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Bou
 {
     Mesh mesh;
 
-    // auto quant = [](float v) {
+    // auto quant = [](double v) {
     //     // snap to millimeter grid
     //     return std::round(v * 1000.0f) / 1000.0f;
     // };
@@ -378,44 +384,27 @@ Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Bou
 
     for (int j = 0; j < numVerticesPerSide; ++j) {
         for (int i = 0; i < numVerticesPerSide; ++i) {
-            auto [x, y, z] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions, tree, geoTIFFLoader);
+            auto [x, y, z] = CoordinateTraits<CoordSystem>::cartesianAt(bounds, i, j, divisions, tree, geoTIFFLoaderPtr, level);
 
             mesh.vertices.push_back( (x) );
             mesh.vertices.push_back( (y) );
             mesh.vertices.push_back( (z) );
 
-            // World position of this vertex in longitude/latitude (in degrees)
-            // float lonMin = bounds.x - bounds.width;
-            // float lonMax = bounds.x + bounds.width;
-            // float latMin = bounds.y - bounds.height;
-            // float latMax = bounds.y + bounds.height;
 
-            // float lon = lonMin + (lonMax - lonMin) * (static_cast<float>(i) / divisions);
-            // float lat = latMin + (latMax - latMin) * (static_cast<float>(j) / divisions);
-            // // How many times you want the texture to tile across the full globe
-            // float tileRepeatU = 32.0f; // horizontal repeats (along longitude)
-            // float tileRepeatV = 8.0f;  // vertical repeats (along latitude)
-
-            // // Convert longitude [-180,180] to U, then scale by repeat count
-            // float u = ((lon + 180.0f) / 360.0f) * tileRepeatU;
-            // float v = ((lat +  90.0f) / 180.0f) * tileRepeatV;
-            // mesh.texCoords.push_back(u);
-            // mesh.texCoords.push_back(v);
-
-            float lonMin = bounds.x - bounds.width;
-            float lonMax = bounds.x + bounds.width;
-            float latMin = bounds.y - bounds.height;
-            float latMax = bounds.y + bounds.height;
+            double lonMin = bounds.x - bounds.width;
+            double lonMax = bounds.x + bounds.width;
+            double latMin = bounds.y - bounds.height;
+            double latMax = bounds.y + bounds.height;
 
             // Assumes a texture mapped over the whole globe
             // Longitude from -180 to 180 → map to U: 0.0 to 1.0
             // Latitude from -90 to 90   → map to V: 0.0 to 1.0
 
-            float lon = lonMin + (lonMax - lonMin) * (static_cast<float>(i) / divisions);
-            float lat = latMin + (latMax - latMin) * (static_cast<float>(j) / divisions);
+            double lon = lonMin + (lonMax - lonMin) * (static_cast<double>(i) / divisions);
+            double lat = latMin + (latMax - latMin) * (static_cast<double>(j) / divisions);
 
-            float u = (lon + 180.0f) / 360.0f;
-            float v = (lat + 90.0f) / 180.0f;
+            double u = (lon + 180.0) / 360.0;
+            double v = (lat + 90.0) / 180.0;
 
             mesh.texCoords.push_back(u);
             mesh.texCoords.push_back(v);
@@ -448,8 +437,8 @@ Mesh QuadtreeTile<CoordSystem>::generateTriangularMesh(typename CoordSystem::Bou
 }
 
 template<typename CoordSystem>
-float QuadtreeTile<CoordSystem>::getElevation(typename CoordSystem::Position pos) {
-    return CoordinateTraits<CoordSystem>::getElevation(pos, tree, geoTIFFLoader);
+double QuadtreeTile<CoordSystem>::getElevation(typename CoordSystem::Position pos, int zoomLevel) {
+    return CoordinateTraits<CoordSystem>::getElevation(pos, tree, geoTIFFLoaderPtr, zoomLevel);
 }
 
 template<typename CoordSystem>
@@ -458,32 +447,6 @@ QuadTree<TileMetadata, CoordSystem>* QuadtreeTile<CoordSystem>::findLeafNode(
                 typename CoordSystem::Position pos ) 
 {
     return CoordinateTraits<CoordSystem>::findLeafNode(node, pos);
-    // if (!node)
-    //     return nullptr;
-
-    // // Get the node’s boundary.
-    // typename CoordSystem::Boundary boundary = node->getBoundary();
-    // float left   = boundary.x - boundary.width;
-    // float right  = boundary.x + boundary.width;
-    // float top    = boundary.y - boundary.height;
-    // float bottom = boundary.y + boundary.height;
-
-    // // If (x,y) lies outside this node, return nullptr.
-    // if (pos.x < left || pos.x > right || pos.y < top || pos.y > bottom)
-    //     return nullptr;
-
-    // // If not divided, this is the leaf.
-    // if (!node->isDivided())
-    //     return node;
-
-    // // Otherwise, search the children.
-    // QuadTree<TileMetadata, CoordSystem>* found = findLeafNode(node->getNortheastNonConst(), pos);
-    // if (found) return found;
-    // found = findLeafNode(node->getNorthwestNonConst(), pos);
-    // if (found) return found;
-    // found = findLeafNode(node->getSoutheastNonConst(), pos);
-    // if (found) return found;
-    // return findLeafNode(node->getSouthwestNonConst(), pos);
 }
 
 /*

@@ -15,7 +15,7 @@ const float DEFAULT_HEIGHT_SCALE = 10.0f;
 Application::Application(int width, int height, const char* title)
     : SCR_WIDTH(width), SCR_HEIGHT(height), windowTitle(title), window(nullptr),
       shader(nullptr), heightfield(nullptr), 
-      camera(glm::vec3(-1000.0f, -1000.0f, -0.0f)), 
+      camera(glm::dvec3(-1737400.0f, -0.0f, -0.0f)), 
       lastX(width / 2.0f), lastY(height / 2.0f),
       firstMouse(true), deltaTime(0.0f), lastFrame(0.0f),
       wireframe(false), wireframeKeyPressed(false),
@@ -238,17 +238,19 @@ void Application::run()
         glm::mat4 model = glm::mat4(1.0f);
         currentShader->setMat4("model", model);
 
-        glm::mat4 view = camera.GetViewMatrix();
+        glm::mat4 view = camera.GetViewMatrix();     // already float
         currentShader->setMat4("view", view);
 
         glm::mat4 projection = glm::perspective(
-            glm::radians(camera.Zoom),
+            glm::radians(static_cast<float>(camera.Zoom)),
             static_cast<float>(SCR_WIDTH) / static_cast<float>(SCR_HEIGHT),
             0.1f,
-            1200.0f
+            1737400.0f
         );
         currentShader->setMat4("projection", projection);
 
+        float C = 2.0f / std::log2(1737400 + 1.0f);
+        currentShader->setFloat("logBufC", C);
 
         // renderer->update(qt_world.getTree(), shader->ID);
         bucket_renderer->render(&qt_world, currentShader->ID, camera.Position);
@@ -340,21 +342,23 @@ void Application::processInput()
         
         // Prepare matrices and viewport for unprojecting.
         glm::mat4 model = glm::mat4(1.0f);
-        glm::mat4 view = camera.GetViewMatrix();
+        glm::mat4 view  = camera.GetViewMatrix();          // float
         glm::mat4 projection = glm::perspective(
-            glm::radians(camera.Zoom),
+            glm::radians(static_cast<float>(camera.Zoom)),
             static_cast<float>(SCR_WIDTH) / static_cast<float>(SCR_HEIGHT),
             0.1f,
-            20000.0f
+            1737400.0f
         );
         glm::vec4 viewport(0.0f, 0.0f, SCR_WIDTH, SCR_HEIGHT);
-        
-        // Convert from screen space to world space.
-        glm::vec3 nearPoint = glm::unProject(glm::vec3(screenCenterX, SCR_HEIGHT / 2.0f, 0.0f),
-                                            view * model, projection, viewport);
-        glm::vec3 farPoint  = glm::unProject(glm::vec3(screenCenterX, SCR_HEIGHT / 2.0f, 1.0f),
-                                            view * model, projection, viewport);
-        
+
+        glm::vec3 nearPoint = glm::unProject(
+                glm::vec3(screenCenterX, screenCenterY, 0.0f),
+                view * model, projection, viewport);
+        glm::vec3 farPoint  = glm::unProject(
+                glm::vec3(screenCenterX, screenCenterY, 1.0f),
+                view * model, projection, viewport);
+
+        // Compute the ray direction in world coordinates.
         glm::vec3 rayDir = glm::normalize(farPoint - nearPoint);
 
         float t = 0.0f;
@@ -440,20 +444,30 @@ void Application::framebuffer_size_callback(GLFWwindow* /*window*/, int width, i
 
 void Application::mouse_callback(double xpos, double ypos)
 {
-    if (firstMouse)
-    {
-        lastX = static_cast<float>(xpos);
-        lastY = static_cast<float>(ypos);
+    if (firstMouse) {               // ← keep this block
+        lastX = xpos;
+        lastY = ypos;
         firstMouse = false;
+        return;                     //  <-- early‑out: avoids the extra ¹
     }
 
-    float xoffset = static_cast<float>(xpos) - lastX;
-    float yoffset = lastY - static_cast<float>(ypos); // Reversed since y-coordinates go from bottom to top
+    double dx = xpos - lastX;
+    double dy = lastY - ypos;       // y goes up
 
-    lastX = static_cast<float>(xpos);
-    lastY = static_cast<float>(ypos);
+    lastX = xpos;
+    lastY = ypos;
 
-    camera.ProcessMouseMovement(xoffset, yoffset);
+    /* ---- DPI scaling -------------------------------------------------- */
+    int winW, winH, fbW, fbH;
+    glfwGetWindowSize(window, &winW, &winH);
+    glfwGetFramebufferSize(window, &fbW, &fbH);
+    double scaleX = double(fbW) / double(winW);
+    double scaleY = double(fbH) / double(winH);
+    dx *= scaleX;
+    dy *= scaleY;
+    /* ------------------------------------------------------------------- */
+
+    camera.ProcessMouseMovement(dx, dy);
 }
 
 void Application::scroll_callback(double /*xoffset*/, double yoffset)

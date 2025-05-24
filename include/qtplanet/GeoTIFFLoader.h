@@ -1,42 +1,54 @@
-#ifndef GEOTIFF_LOADER_H
-#define GEOTIFF_LOADER_H
+// ─── GeoTIFFLoader.h ───────────────────────────────────────────────────────
+#pragma once
 
 #include <string>
 #include <vector>
-#include <stdexcept>
 
-// A simple class for loading elevation data from a GeoTIFF file.
-class GeoTIFFLoader {
+#include <gdal_priv.h>
+#include <ogr_spatialref.h>
+
+/**
+ * @brief Lightweight loader for single‑band GeoTIFF elevation tiles.
+ *
+ * After calling load(filename) you can access:
+ *   • width(), height()           – raster size in pixels
+ *   • getGeoTransform()           – 6‑element affine transform (GDAL order)
+ *   • getElevationData()          – interleaved row‑major buffer (double)
+ *
+ * The class always reads the first raster band and promotes its values to
+ * 64‑bit floating‑point (GDT_Float64). No rescaling or nodata handling is
+ * done here; callers are expected to inspect and post‑process the buffer.
+ */
+class GeoTIFFLoader
+{
 public:
     GeoTIFFLoader();
     ~GeoTIFFLoader();
 
-    // Loads the GeoTIFF file. Throws std::runtime_error on failure.
+    /** Load a GeoTIFF from disk, throwing std::runtime_error on failure. */
     void load(const std::string& filename);
 
-    // Returns the number of columns in the raster.
-    int getWidth() const;
+    // ── Accessors ──────────────────────────────────────────────────────────
+    [[nodiscard]] int getWidth()  const;
+    [[nodiscard]] int getHeight() const;
+    [[nodiscard]] int getMemoryUsage() const;  //!< rough heap bytes used
 
-    // Returns the number of rows in the raster.
-    int getHeight() const;
+    [[nodiscard]] const std::vector<double>& getElevationData() const;
+    [[nodiscard]] const std::vector<double>& getGeoTransform()  const;
 
-    // Returns the elevation data as a flat vector in row-major order.
-    // Each element corresponds to the elevation value at that pixel.
-    const std::vector<float>& getElevationData() const;
-
-    // Returns the geotransform parameters as a vector of 6 doubles.
-    // The geotransform array is defined as:
-    // [ originX, pixelWidth, rotationX, originY, rotationY, pixelHeight ]
-    const std::vector<double>& getGeoTransform() const;
-
-    int getMemoryUsage() const;
+    /**
+     * @brief Fetch the dataset's CRS as an OGRSpatialReference.
+     *
+     * Handles the quirks of older/newer GDAL versions and returns a valid
+     * geographic SRS (EPSG:4326) if none is present in the file.
+     */
+    static OGRSpatialReference getDatasetSRS(GDALDataset* ds);
 
 private:
-    int width;
-    int height;
-    std::vector<float> elevationData;
-    std::vector<double> geoTransform; // 6 parameters
-    int memoryUsage;
-};
+    int width;       //!< number of columns (pixels)
+    int height;      //!< number of rows    (pixels)
+    int memoryUsage; //!< bytes allocated by elevationData + geoTransform
 
-#endif // GEOTIFF_LOADER_H
+    std::vector<double> elevationData; //!< row‑major (height×width)
+    std::vector<double> geoTransform;  //!< GDAL affine, size 6
+};

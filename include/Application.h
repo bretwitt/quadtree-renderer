@@ -48,8 +48,9 @@ private:
 
     // Camera
     Camera camera;
-    float lastX;
-    float lastY;
+
+    double lastX;
+    double lastY;
     bool firstMouse;
 
     // Timing

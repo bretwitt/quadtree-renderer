@@ -16,10 +16,10 @@
 //----------------------------------------------------------
 
 struct Mesh {
-    std::vector<float> vertices;  // position data, 3 floats per vertex
-    std::vector<float> normals;   // normal data, 3 floats per vertex
-    std::vector<float> texCoords; // texture coords, 2 floats per vertex
-    std::vector<float> coarseNormals; // texture coords, 2 floats per vertex
+    std::vector<double> vertices;  // position data, 3 doubles per vertex
+    std::vector<double> normals;   // normal data, 3 doubles per vertex
+    std::vector<double> texCoords; // texture coords, 2 doubles per vertex
+    std::vector<double> coarseNormals; // texture coords, 2 doubles per vertex
     std::vector<unsigned int> indices;
 };
 
@@ -39,18 +39,18 @@ public:
     * Otherwise, Perlin noise is used as a fallback.
     */
     using Boundary = typename CoordSystem::Boundary;
-    QuadtreeTile(Boundary b, GeoTIFFLoader* geoLoader = nullptr);
+    QuadtreeTile(Boundary b, const std::shared_ptr<MultiGeoTIFFManager>& geoLoader = nullptr);
     
     // Destructor: cleans up the allocated QuadTree.
     ~QuadtreeTile();
 
-    void updateLOD(float cameraX, float cameraY, float cameraZ,
-                float splitThreshold, float mergeThreshold, int& subdivisions);
+    void updateLOD(double cameraX, double cameraY, double cameraZ,
+                double splitThreshold, double mergeThreshold, int& subdivisions);
 
     void tick();
     void tickLeaves(QuadTree<TileMetadata,CoordSystem>* node);
 
-    void deformVertex(typename CoordSystem::Position pos, float dz)
+    void deformVertex(typename CoordSystem::Position pos, double dz)
     {
         QuadTree<TileMetadata, CoordSystem>* leaf = findLeafNode(tree, pos);
         if (!leaf) {
@@ -63,10 +63,10 @@ public:
         // Instead of initializing a full grid from the mesh,
         // we simply check whether there is already a deformed point near (x,y).
         const int level = leaf->getLevel();
-        const float baseThreshold = 0.05f; // adjust this base value as needed
+        const double baseThreshold = 0.05f; // adjust this base value as needed
         bool updated = false;
         for (auto& dp : metadata->dirtyVertices) {
-            float dist = CoordinateTraits<CoordSystem>::distance({dp.x,dp.y}, pos);
+            double dist = CoordinateTraits<CoordSystem>::distance({dp.x,dp.y}, pos);
             if (dist < baseThreshold) {
                 dp.z += dz;
                 updated = true;
@@ -76,7 +76,7 @@ public:
         
         if (!updated) {
             // No existing dirty point is nearby, so add a new one.
-            vec3 newPoint{pos.asArray()[0],pos.asArray()[1],computeBaseElevation(pos)+dz};
+            vec3 newPoint{pos.asArray()[0],pos.asArray()[1],computeBaseElevation(pos,0)+dz};
             metadata->dirtyVertices.push_back(newPoint);
         }
 
@@ -94,9 +94,10 @@ public:
     * coordinates using the geotransform and returns the elevation from the raster data.
     * Otherwise, it falls back to generating elevation using Perlin noise.
     */
-    float getElevation(typename CoordSystem::Position pos);
+    double getElevation(typename CoordSystem::Position pos, int zoomLevel);
 
-    float computeBaseElevation(typename CoordSystem::Position pos);
+    double computeBaseElevation(typename CoordSystem::Position pos, int zoomLevel);
+
     void deduplicateVertices(std::vector<vec3>& vertices);
 
     //std::unordered_set<QuadTree<TileMetadata>*> getDirtyTiles() { return dirtyTiles; }
@@ -104,8 +105,8 @@ public:
 private:
     // Recursive function to update level-of-detail.
     void updateLODRec(QuadTree<TileMetadata, CoordSystem>* node,
-                    float cameraX, float cameraY, float cameraZ,
-                    float splitThreshold, float mergeThreshold,
+                    double cameraX, double cameraY, double cameraZ,
+                    double splitThreshold, double mergeThreshold,
                     int& subdivisions);
 
     // Called when a new bucket (node) is created.
@@ -139,10 +140,10 @@ private:
     Mesh generateTriangularMesh(typename CoordSystem::Boundary bounds, int level);
 
     // Cross product helper.
-    static inline void cross(const float* a, const float* b, float* result);
+    static inline void cross(const double* a, const double* b, double* result);
 
     // Normalize helper.
-    static inline void normalize(float* v);
+    static inline void normalize(double* v);
 
     // Estimate normals for the mesh.
     void calculateNormals(Mesh& mesh);
@@ -152,7 +153,9 @@ private:
     // Mapping from a quadtree node to its mesh.
     std::unordered_map<QuadTree<TileMetadata, CoordSystem>*, Mesh> bucketMeshes;
     // Optional pointer to a GeoTIFFLoader for elevation data.
-    GeoTIFFLoader* geoTIFFLoader;
+    // GeoTIFFLoader* geoTIFFLoader;
+    // Optional pointer to a MultiGeoTIFFManager for elevation data.
+    std::shared_ptr<MultiGeoTIFFManager> geoTIFFLoaderPtr;
 
     std::unordered_set<QuadTree<TileMetadata, CoordSystem>*> dirtyTiles;
 };

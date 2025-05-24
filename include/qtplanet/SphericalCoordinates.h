@@ -9,9 +9,10 @@
 #include "qtplanet/CartesianCoordinates.h"
 #include "qtplanet/Quadtree.h"
 #include "qtplanet/GeoTIFFLoader.h"
+#include "qtplanet/MultiGeoTIFFManager.h"
 #include "qtplanet/TileMetadata.h"
 
-const static double kEarthRadiusMeters = 1000.0;
+const static double kPlanetRadiusMeters = 1737400.0;
 const static double kPi = 3.14159265358979323846;
 
 template<>
@@ -22,71 +23,76 @@ public:
 
     static std::array<Boundary, 4> getChildBounds(const Boundary& b);
     static std::array<Boundary, 4> subdivide(const Boundary& b);
-    static bool contains(const Boundary& b, float lon, float lat);
-    static float distanceToBounds(
+    static bool contains(const Boundary& b, double lon, double lat);
+    static double distanceToBounds(
         const Boundary& b,
-        float camX, float camY, float camZ,
-        float tileElev
+        double camX, double camY, double camZ,
+        double tileElev
     );
-    static float distanceToBoundsLatLon(
+    static double distanceToBoundsLatLon(
         const Boundary& b,
-        float lon, float lat,
-        float cz, float elevation
+        double lon, double lat,
+        double cz, double elevation
     );
-    static float distance(Position p1, Position p2);
-    static float computeBaseElevation(const Position& pos, const GeoTIFFLoader* geoLoader);
-    static float getElevation(const Position& pos,
+    static double distance(Position p1, Position p2);
+    static double computeBaseElevation(const Position& pos, const std::shared_ptr<MultiGeoTIFFManager>& geoLoader, int zoomLevel = 0);
+
+    static double getElevation(const Position& pos,
                               QuadTree<TileMetadata, Spherical>* tree,
-                              const GeoTIFFLoader* geoLoader);
-    static std::tuple<float, float, float> cartesianAt(
+                              const std::shared_ptr<MultiGeoTIFFManager>& geoLoader,
+                              int zoomLevel
+                            );
+
+    static std::tuple<double, double, double> cartesianAt(
         const Boundary& b, int i, int j, int divisions,
         QuadTree<TileMetadata, Spherical>* tree,
-        const GeoTIFFLoader* geoLoader
+        const std::shared_ptr<MultiGeoTIFFManager>& geoLoader,
+        int zoomLevel
     );
     static QuadTree<TileMetadata, Spherical>* findLeafNode(
         QuadTree<TileMetadata, Spherical>* node,
         Position pos
     );
-    static std::pair<int, int> computeTileIndices(const Position& pos, float tileSizeDegrees);
-    static std::pair<float, float> tileCenterPosition(const TileKey& key, float tileSizeDegrees);
-    static std::pair<float,float> projectXYZToLatLon(float x, float y, float z) {
-        float lat = radiansToDegrees(asin(z / kEarthRadiusMeters));
-        float lon = radiansToDegrees(atan2(y, x));
+    static std::pair<int, int> computeTileIndices(const Position& pos, double tileSizeDegrees);
+    static std::pair<double, double> tileCenterPosition(const TileKey& key, double tileSizeDegrees);
+    static std::pair<double,double> projectXYZToLatLon(double x, double y, double z) {
+        double lat = radiansToDegrees(asin(z / kPlanetRadiusMeters));
+        double lon = radiansToDegrees(atan2(y, x));
         return { lon, lat };
     }
 
     // ---------------------------------------------------------
     // Helper: direction unit‑vector for a lon/lat pair
     // ---------------------------------------------------------
-    static inline std::tuple<float,float,float> dirFromLonLat(float lonDeg, float latDeg)
+    static inline std::tuple<double,double,double> dirFromLonLat(double lonDeg, double latDeg)
     {
         double lam = degreesToRadians(lonDeg);
         double phi = degreesToRadians(latDeg);
         double cx = std::cos(phi);
-        return { static_cast<float>(cx * std::cos(lam)),
-                static_cast<float>(cx * std::sin(lam)),
-                static_cast<float>(std::sin(phi)) };
+        return { static_cast<double>(cx * std::cos(lam)),
+                static_cast<double>(cx * std::sin(lam)),
+                static_cast<double>(std::sin(phi)) };
     }
 
-    static inline float getElevationFromXYZ(float x, float y, float z) {
+    static inline double getElevationFromXYZ(double x, double y, double z) {
         // Convert to spherical coordinates
-        float r = std::sqrt((x * x) + (y * y) + (z * z));
-        float elevation = r - kEarthRadiusMeters;
+        double r = std::sqrt((x * x) + (y * y) + (z * z));
+        double elevation = r - kPlanetRadiusMeters;
         // std::cout << "Elevation: " << elevation << " " << "Radius " << r << std::endl;
         return elevation;
     }
 
-    inline static float wrapLongitude(float lon) {
-        float shifted = fmod(lon + 180.0f, 360.0f);
-        if (shifted < 0.0f) shifted += 360.0f;
-        return shifted - 180.0f;
+    inline static double wrapLongitude(double lon) {
+        double shifted = fmod(lon + 180.0, 360.0);
+        if (shifted < 0.0f) shifted += 360.0;
+        return shifted - 180.0;
     }
 
-    inline static float degreesToRadians(double degrees) {
+    inline static double degreesToRadians(double degrees) {
         return degrees * (kPi / 180.0);
     }
 
-    inline static float radiansToDegrees(double radians) {
+    inline static double radiansToDegrees(double radians) {
         return radians * (180.0 / kPi);
     }
     // ------------------------------------------------------------
@@ -94,25 +100,25 @@ public:
     //   u in [0,1]  wraps 360° in longitude
     //   v in [0,1]  comes from v = (sin lat + 1)/2
     // ------------------------------------------------------------
-    inline static std::pair<float,float> sphericalUV(float lonDeg, float latDeg)
+    inline static std::pair<double,double> sphericalUV(double lonDeg, double latDeg)
     {
-        float u = CoordinateTraits<Spherical>::wrapLongitude(lonDeg) * (1.0f / 360.0f);               // 0 … 1
-        float v = (std::sin(CoordinateTraits<Spherical>::degreesToRadians(latDeg)) + 1.0f) * 0.5f;    // 0 … 1
+        double u = CoordinateTraits<Spherical>::wrapLongitude(lonDeg) * (1.0f / 360.0f);               // 0 … 1
+        double v = (std::sin(CoordinateTraits<Spherical>::degreesToRadians(latDeg)) + 1.0f) * 0.5f;    // 0 … 1
         return {u, v};
     }
 
 
-    inline static float haversineDistance(float lon1, float lat1, float lon2, float lat2) {
-        float radLat1 = degreesToRadians(lat1);
-        float radLat2 = degreesToRadians(lat2);
-        float deltaLat = degreesToRadians(lat2 - lat1);
-        float deltaLon = degreesToRadians(wrapLongitude(lon2 - lon1));
+    inline static double haversineDistance(double lon1, double lat1, double lon2, double lat2) {
+        double radLat1 = degreesToRadians(lat1);
+        double radLat2 = degreesToRadians(lat2);
+        double deltaLat = degreesToRadians(lat2 - lat1);
+        double deltaLon = degreesToRadians(wrapLongitude(lon2 - lon1));
 
-        float a = sin(deltaLat * 0.5f) * sin(deltaLat * 0.5f) +
+        double a = sin(deltaLat * 0.5f) * sin(deltaLat * 0.5f) +
                   cos(radLat1) * cos(radLat2) *
                   sin(deltaLon * 0.5f) * sin(deltaLon * 0.5f);
-        float c = 2.0f * atan2(sqrt(a), sqrt(1.0f - a));
-        return kEarthRadiusMeters * c;
+        double c = 2.0f * atan2(sqrt(a), sqrt(1.0f - a));
+        return kPlanetRadiusMeters * c;
     }
 
     static Boundary clampAtPoles(Boundary b) {

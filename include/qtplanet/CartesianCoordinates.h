@@ -11,6 +11,7 @@
 // forward declares
 template<typename T, typename CoordSystem> class QuadTree;
 class GeoTIFFLoader;
+class MultiGeoTIFFManager;
 
 template<>
 struct CoordinateTraits<Cartesian> {
@@ -18,32 +19,35 @@ struct CoordinateTraits<Cartesian> {
   using Position = Cartesian::Position;
 
   static std::array<Boundary,4> getChildBounds(const Boundary& b);
-  static bool contains(const Boundary& b, float x, float y);
-  static float distanceToBounds(const Boundary& b,
-                                float cx, float cy, float cz,
-                                float elevation);
+  static bool contains(const Boundary& b, double x, double y);
+  static double distanceToBounds(const Boundary& b,
+                                double cx, double cy, double cz,
+                                double elevation);
   static std::array<Boundary,4> subdivide(const Boundary& b);
-  static float distance(Position p1, Position p2);
+  static double distance(Position p1, Position p2);
 
-  static std::tuple<float,float,float>
+  static std::tuple<double,double,double>
     cartesianAt(const Boundary& b,
                 int i, int j, int divisions,
                 QuadTree<TileMetadata,Cartesian>* tree,
-                const GeoTIFFLoader* geoLoader);
+                const std::shared_ptr<MultiGeoTIFFManager>& geoLoader,
+                int zoomLevel = 0);
 
-  static float computeBaseElevation(const Position& pos,
-                                    const GeoTIFFLoader* geoLoader);
+  static double computeBaseElevation(const Position& pos,
+                                    const std::shared_ptr<MultiGeoTIFFManager>& geoLoader,
+                                    int zoomLevel = 0);
 
   static QuadTree<TileMetadata,Cartesian>*
     findLeafNode(QuadTree<TileMetadata,Cartesian>* node,
                  Position pos);
 
-  static float getElevation(const Position& pos,
+  static double getElevation(const Position& pos,
                             QuadTree<TileMetadata,Cartesian>* tree,
-                            const GeoTIFFLoader* geoLoader);
+                            const std::shared_ptr<MultiGeoTIFFManager>& geoLoader,
+                            int zoomLevel = 0);
 
-  static std::pair<float,float> tileCenterPosition(const TileKey& key, float tileSize);
-  static std::pair<int,int> computeTileIndices(const Position& pos, float tileSize);
+  static std::pair<double,double> tileCenterPosition(const TileKey& key, double tileSize);
+  static std::pair<int,int> computeTileIndices(const Position& pos, double tileSize);
 
 };
 

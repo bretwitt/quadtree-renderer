@@ -7,7 +7,7 @@
 //---------------------------------------------------------------------
 // Constructor
 //---------------------------------------------------------------------
-QuadtreeWorld::QuadtreeWorld(float tileSz, int baseViewRange, float splitThr, float mergeThr)
+QuadtreeWorld::QuadtreeWorld(double tileSz, int baseViewRange, double splitThr, double mergeThr)
     : tileSize(tileSz),
       viewRangeInTiles(baseViewRange),
       splitThreshold(splitThr),
@@ -15,9 +15,13 @@ QuadtreeWorld::QuadtreeWorld(float tileSz, int baseViewRange, float splitThr, fl
 {
     // Load the terrain height‑map (GeoTIFF).
     // loader.load("../resources/apollo.TIFF");
-    loader.load("../resources/ldem_64_fixed.tif");
+    // loader.load("../resources/ldem_64_fixed.tif");
     // loader.load("../resources/Lunar_LRO_LOLAKaguya_DEMmerge_60N60S_512ppd.tif");
     // loader.load("../resources/WAC_CSHADE_0000N1800_128P_4WEB.tif");
+
+    geoMgr = std::make_shared<MultiGeoTIFFManager>();
+    geoMgr->addSource("../resources/ldem_64_fixed.tif",  0,  14);   // 0‑6 : global DEM
+    // geoMgr->addSource("../resources/apollo.tif",         7, 14);   // 7‑14: local 1.5 m DEM
 }
 
 //---------------------------------------------------------------------
@@ -33,7 +37,7 @@ QuadtreeWorld::~QuadtreeWorld()
 //---------------------------------------------------------------------
 // update – called every frame
 //---------------------------------------------------------------------
-void QuadtreeWorld::update(float camX, float camY, float camZ)
+void QuadtreeWorld::update(double camX, double camY, double camZ)
 {
     /* ----------------------------------------------------------
      * cache the Cartesian camera pos for LOD tests               */
@@ -43,7 +47,7 @@ void QuadtreeWorld::update(float camX, float camY, float camZ)
      * project to geodetic lon/lat/elev                           */
     auto [camLon, camLat] =
         CoordinateTraits<Spherical>::projectXYZToLatLon(camX, camY, camZ);
-    float camElev =
+    double camElev =
         CoordinateTraits<Spherical>::getElevationFromXYZ(camX, camY, camZ);
 
     /* ----------------------------------------------------------
@@ -81,8 +85,8 @@ void QuadtreeWorld::update(float camX, float camY, float camZ)
             if (tiles.find(key) == tiles.end()) {
                 auto [cLon, cLat] =
                     CoordinateTraits<Spherical>::tileCenterPosition(key, tileSize);
-                float half = tileSize * 0.5f;
-                tiles[key] = new QuadtreeTile<Spherical>({cLon, cLat, half, half}, &loader);
+                double half = tileSize * 0.5;
+                tiles[key] = new QuadtreeTile<Spherical>({cLon, cLat, half, half}, geoMgr);
             }
         }
     }
@@ -144,7 +148,7 @@ QuadtreeWorld::getAllMeshes()
 //---------------------------------------------------------------------
 // deformVertex – raise/lower a point on the surface
 //---------------------------------------------------------------------
-void QuadtreeWorld::deformVertex(float lon, float lat, float dz)
+void QuadtreeWorld::deformVertex(double lon, double lat, double dz)
 {
     auto [tileX, tileY] =
         CoordinateTraits<Spherical>::computeTileIndices({lon, lat}, tileSize);
@@ -159,25 +163,25 @@ void QuadtreeWorld::deformVertex(float lon, float lat, float dz)
 //---------------------------------------------------------------------
 // getElevation – sample height at lon/lat in metres
 //---------------------------------------------------------------------
-float QuadtreeWorld::getElevation(float lon, float lat)
+double QuadtreeWorld::getElevation(double lon, double lat)
 {
     auto [tileX, tileY] =
         CoordinateTraits<Spherical>::computeTileIndices({lon, lat}, tileSize);
     TileKey key{ tileX, tileY };
 
     auto it = tiles.find(key);
-    return (it != tiles.end()) ? it->second->getElevation({lon, lat}) : -1.0f;
+    return (it != tiles.end()) ? it->second->getElevation({lon, lat}, 0) : -1.0f;
 }
 
 //---------------------------------------------------------------------
 // helper: camera lon/lat and elevation
 //---------------------------------------------------------------------
-std::pair<float,float> QuadtreeWorld::getCameraPositionLonLat() const
+std::pair<double,double> QuadtreeWorld::getCameraPositionLonLat() const
 {
     return CoordinateTraits<Spherical>::projectXYZToLatLon(cameraX, cameraY, cameraZ);
 }
 
-float QuadtreeWorld::getCameraPositionElevation() const
+double QuadtreeWorld::getCameraPositionElevation() const
 {
     return CoordinateTraits<Spherical>::getElevationFromXYZ(cameraX, cameraY, cameraZ);
 }

@@ -5,29 +5,29 @@
 
 struct Cartesian {
     struct Position { 
-        float x, y; 
-        std::vector<float> asArray() const { 
+        double x, y; 
+        std::vector<double> asArray() const { 
             return { x, y };
         }
     };
-    struct Boundary { float x, y, width, height; };
+    struct Boundary { double x, y, width, height; };
 };
 
 struct Polar {
-    struct Position { float lon, lat; };
-    struct Boundary { float r, theta, dr, dtheta; };
+    struct Position { double lon, lat; };
+    struct Boundary { double r, theta, dr, dtheta; };
 };
 
 struct Spherical {
     struct Position { 
-        float lon, lat; 
-        std::vector<float> asArray() const { 
+        double lon, lat; 
+        std::vector<double> asArray() const { 
             return { lon, lat };
         }
 
     };
 
-    struct Boundary { float x, y, width, height; };
+    struct Boundary { double x, y, width, height; };
 };
 
 

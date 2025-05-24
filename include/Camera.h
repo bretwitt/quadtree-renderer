@@ -1,122 +1,115 @@
-#ifndef CAMERA_H
-#define CAMERA_H
-
+// Camera.h  (header‑only, drop‑in)  ──────────────────────────
+#pragma once
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
+#include <cmath>
+
 #define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-// Camera movement directions
-enum Camera_Movement {
-    FORWARD,
-    BACKWARD,
-    LEFT,
-    RIGHT,
-    UP,
-    DOWN
-};
+/* -----------------------------------------------------------------------
+   Split double → high/low floats  (useful if you ship the eye to shaders)
+   -------------------------------------------------------------------- */
+inline void splitDouble(double v, float& hi, float& lo)
+{
+    constexpr double magic = double(1ull << 25) + 1.0;
+    double t = magic * v;
+    hi = static_cast<float>(t - (t - v));
+    lo = static_cast<float>(v - hi);
+}
 
-// Default camera constants
-const float YAW         = 0.0f;
-const float PITCH       = 0.0f;
-const float ROLL        = 0.0f;
-const float SPEED       = 100.0f;
-const float SENSITIVITY = 0.05f;
-const float ZOOM        = 45.0f;
+/* -----------------------------------------------------------------------
+   High‑precision free‑fly camera, quaternion‑based
+   -------------------------------------------------------------------- */
+enum Camera_Movement { FORWARD, BACKWARD, LEFT, RIGHT, UP, DOWN };
 
-class Camera {
+class Camera
+{
 public:
-    // Camera orientation
-    glm::quat Orientation;
+    /* public state ------------------------------------------------------ */
+    glm::dvec3 Position { 0.0, 0.0, 0.0 };
+    glm::dvec3 Front    { 0.0, 0.0,-1.0 };
+    glm::dvec3 Up       { 0.0, 1.0, 0.0 };
+    glm::dvec3 Right    { 1.0, 0.0, 0.0 };
 
-    // Camera attributes
-    glm::vec3 Position;
-    glm::vec3 Front;
-    glm::vec3 Up;
-    glm::vec3 Right;
-    glm::vec3 WorldUp;
+    double Zoom = 45.0;          // fov (°)
 
-    // Euler angles
-    float Yaw;
-    float Pitch;
-    float Roll;
+    /* ctor -------------------------------------------------------------- */
+    explicit Camera(glm::dvec3 startPos)
+        : Position(startPos)
+    {}
 
-    // Camera options
-    float MovementSpeed;
-    float MouseSensitivity;
-    float Zoom;
-
-    // Constructor
-    Camera(
-        glm::vec3 position = glm::vec3(0.0f, 50.0f, 100.0f),
-        glm::vec3 up       = glm::vec3(0.0f, 0.0f, 1.0f),
-        float yaw          = YAW,
-        float pitch        = PITCH,
-        float roll         = ROLL
-    ) : Front(glm::vec3(1.0f, 0.0f, 0.0f)),
-        MovementSpeed(SPEED),
-        MouseSensitivity(SENSITIVITY),
-        Zoom(ZOOM)
+    /* view matrix ------------------------------------------------------- */
+    glm::mat4 GetViewMatrix() const
     {
-        Position = position;
-        WorldUp = up;
-        Yaw = yaw;
-        Pitch = pitch;
-        Roll = roll;
-
-        Orientation = glm::quat(glm::vec3(glm::radians(Pitch), glm::radians(Yaw), glm::radians(Roll)));
-        updateCameraVectors();
+        glm::dvec3 center = Position + Front;
+        return glm::mat4(glm::lookAt(Position, center, Up));
     }
 
-    // Returns the view matrix using LookAt
-    glm::mat4 GetViewMatrix() {
-        return glm::lookAt(Position, Position + Front, Up);
-    }
-
-    // Processes keyboard input
-    void ProcessKeyboard(Camera_Movement direction, float deltaTime) {
-        float velocity = MovementSpeed * deltaTime;
-        if (direction == FORWARD)  Position += Front * velocity;
-        if (direction == BACKWARD) Position -= Front * velocity;
-        if (direction == LEFT)     Position -= Right * velocity;
-        if (direction == RIGHT)    Position += Right * velocity;
-        if (direction == UP)       Position += Up * velocity;
-        if (direction == DOWN)     Position -= Up * velocity;
-    }
-
-
-    void ProcessMouseMovement(float xoffset, float yoffset) {
-        xoffset *= MouseSensitivity;
-        yoffset *= MouseSensitivity;
-
-        glm::quat pitchQuat = glm::angleAxis(glm::radians(-yoffset), Right); // Local pitch
-        glm::quat yawQuat   = glm::angleAxis(glm::radians(-xoffset), Up);    // Local yaw
-
-        Orientation = glm::normalize(yawQuat * pitchQuat * Orientation);
-        updateCameraVectors();
-    }
-
-    // Processes mouse scroll input for speed adjustment
-    void ProcessMouseScroll(float yoffset) {
-        MovementSpeed += yoffset;
-        MovementSpeed = glm::clamp(MovementSpeed, 0.05f, 100.0f);
-    }
-
-    // Processes roll input (in degrees)
-    void ProcessRoll(float rollOffset, float deltaTime = 0.1f) {
-        float angle = glm::radians(rollOffset * deltaTime);
-        glm::quat rollQuat = glm::angleAxis(angle, Front);
-        Orientation = glm::normalize(rollQuat * Orientation);
-        updateCameraVectors();
-    }
+    /* movement ---------------------------------------------------------- */
+    void ProcessKeyboard(Camera_Movement dir, double dt);
+    void ProcessMouseMovement(double dx, double dy);
+    void ProcessMouseScroll(double dZoom);
+    void ProcessRoll(double dRoll);
 
 private:
-    // Updates the camera's direction vectors based on orientation quaternion
-    void updateCameraVectors() {
-        Front = glm::normalize(Orientation * glm::vec3(0.0f, 0.0f, -1.0f));
-        Right = glm::normalize(Orientation * glm::vec3(1.0f, 0.0f, 0.0f));
-        Up    = glm::normalize(glm::cross(Right, Front));
-    }
+    /* internal orientation --------------------------------------------- */
+    glm::dquat orientation_ { 1.0, 0.0, 0.0, 0.0 };   // w,x,y,z
+
+    /* tweakables */
+    static constexpr double kSpeed      = 50000.0;  // m/s
+    static constexpr double kMouseSens  = 0.1;   // deg / pixel
+    static constexpr double kRollSens   = 0.1;   // deg / tap
+
+    /* helpers */
+    void applyQuaternion(const glm::dquat& q) { orientation_ = glm::normalize(q * orientation_); }
+    void refreshAxes();                        // updates Front/Right/Up from orientation_
 };
 
-#endif // CAMERA_H
+/* -----------------------------------------------------------------------
+   implementation
+   -------------------------------------------------------------------- */
+inline void Camera::refreshAxes()
+{
+    Front = glm::normalize(orientation_ * glm::dvec3( 0, 0,-1 ));
+    Right = glm::normalize(orientation_ * glm::dvec3( 1, 0, 0 ));
+    Up    = glm::normalize(orientation_ * glm::dvec3( 0, 1, 0 ));
+}
+
+inline void Camera::ProcessKeyboard(Camera_Movement dir, double dt)
+{
+    double v = kSpeed * dt;
+    if (dir == FORWARD)  Position += Front  * v;
+    if (dir == BACKWARD) Position -= Front  * v;
+    if (dir == LEFT)     Position -= Right  * v;
+    if (dir == RIGHT)    Position += Right  * v;
+    if (dir == UP)       Position += Up     * v;
+    if (dir == DOWN)     Position -= Up     * v;
+}
+
+inline void Camera::ProcessMouseMovement(double dx, double dy)
+{
+    double yawDeg   =  -dx * kMouseSens;
+    double pitchDeg =  dy * kMouseSens;
+
+    /* relative axes:  yaw ⟳ Up,  pitch ⟳ Right */
+    glm::dquat qYaw   = glm::angleAxis( glm::radians(yawDeg),   Up    );
+    glm::dquat qPitch = glm::angleAxis( glm::radians(pitchDeg), Right );
+
+    applyQuaternion(qYaw);
+    applyQuaternion(qPitch);
+    refreshAxes();
+}
+
+inline void Camera::ProcessRoll(double dRoll)
+{
+    glm::dquat qRoll = glm::angleAxis(glm::radians(dRoll * kRollSens), Front);
+    applyQuaternion(qRoll);
+    refreshAxes();
+}
+
+inline void Camera::ProcessMouseScroll(double dZoom)
+{
+    Zoom = std::clamp(Zoom - dZoom, 1.0, 75.0);
+}
